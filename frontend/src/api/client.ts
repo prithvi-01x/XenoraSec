@@ -13,7 +13,7 @@ import type {
 // - Development: Uses VITE_API_BASE_URL or defaults to localhost
 // - Production: Uses empty string for same-origin requests (recommended)
 // Set VITE_API_BASE_URL in .env files to override
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ||
     (import.meta.env.PROD ? '' : 'http://localhost:8000');
 
 const apiClient = axios.create({
@@ -24,10 +24,12 @@ const apiClient = axios.create({
     },
 });
 
-// Request interceptor for logging
+// Request interceptor for logging (dev only)
 apiClient.interceptors.request.use(
     (config) => {
-        console.log(`[API] ${config.method?.toUpperCase()} ${config.url}`);
+        if (import.meta.env.DEV) {
+            console.log(`[API] ${config.method?.toUpperCase()} ${config.url}`);
+        }
         return config;
     },
     (error) => Promise.reject(error)
@@ -37,12 +39,14 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
     (response) => response,
     (error) => {
-        if (error.response) {
-            console.error(`[API Error] ${error.response.status}:`, error.response.data);
-        } else if (error.request) {
-            console.error('[API Error] No response received:', error.request);
-        } else {
-            console.error('[API Error]:', error.message);
+        if (import.meta.env.DEV) {
+            if (error.response) {
+                console.error(`[API Error] ${error.response.status}:`, error.response.data);
+            } else if (error.request) {
+                console.error('[API Error] No response received:', error.request);
+            } else {
+                console.error('[API Error]:', error.message);
+            }
         }
         return Promise.reject(error);
     }
