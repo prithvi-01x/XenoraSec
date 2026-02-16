@@ -24,7 +24,7 @@ from app.db.crud import (
     cleanup_old_scans
 )
 from app.services.scanner_service import run_full_scan, get_scan_queue_info
-from app.core.security import validate_target, sanitize_scan_id
+from app.core.security import validate_target, sanitize_scan_id, TargetValidationError
 from app.core.rate_limit import check_rate_limit
 from app.core.logging import get_logger
 from app.core.config import settings

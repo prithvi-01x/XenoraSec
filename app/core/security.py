@@ -91,18 +91,16 @@ def validate_target(
         
         # Check private IP restrictions
         if metadata["is_private"]:
-            if not allow_private:
-                # Still block if it's literally localhost and local scanning is off
-                if (hostname.startswith("127.") or hostname == "localhost"):
-                    if not allow_localhost:
-                        return False, "Scanning localhost is not allowed", metadata
-                else:
-                    return False, "Scanning private IP addresses is not allowed", metadata
+            is_localhost = hostname.startswith("127.") or hostname == "localhost"
             
-            # Allow localhost if configured
-            if hostname.startswith("127.") or hostname == "localhost":
+            # Check localhost specifically
+            if is_localhost:
                 if not allow_localhost:
                     return False, "Scanning localhost is not allowed", metadata
+            else:
+                # Other private IPs (10.x.x.x, 172.16.x.x, 192.168.x.x, etc.)
+                if not allow_private:
+                    return False, "Scanning private IP addresses is not allowed", metadata
     
     else:
         # Validate as domain
@@ -147,20 +145,35 @@ def validate_domain(domain: str) -> Tuple[bool, Optional[str]]:
     if not domain:
         return False, "Domain is empty"
     
-    # Basic domain pattern
-    domain_pattern = r'^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z]{2,}$'
-    
     # Allow localhost
     if domain == "localhost":
         return True, None
     
+    # More permissive domain pattern:
+    # - Allows subdomains
+    # - Allows hyphens (not at start/end of labels)
+    # - Allows TLDs of any length (including single char like .x)
+    # - Allows domains starting with numbers
+    domain_pattern = r'^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$'
+    
     if not re.match(domain_pattern, domain):
         return False, "Invalid domain format"
     
-    # Check for valid TLD
-    parts = domain.split(".")
-    if len(parts) < 2:
+    # Ensure we have at least one dot (except localhost which is handled above)
+    if '.' not in domain:
         return False, "Domain must have at least one dot"
+    
+    # Validate length constraints (max 253 chars for full domain)
+    if len(domain) > 253:
+        return False, "Domain too long (max 253 characters)"
+    
+    # Validate individual label lengths (max 63 chars each)
+    parts = domain.split(".")
+    for part in parts:
+        if len(part) > 63:
+            return False, f"Domain label '{part}' too long (max 63 characters)"
+        if len(part) == 0:
+            return False, "Empty domain label not allowed"
     
     return True, None
 

@@ -6,6 +6,11 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Constants for risk score calculation
+NORMALIZATION_FACTOR = 15.0  # Sigmoid normalization divisor
+MAX_RISK_SCORE = 10.0  # Maximum risk score
+MAX_PORT_CONTRIBUTION = 1.0  # Maximum contribution from open ports
+
 
 async def analyze_with_ai(vulnerabilities: List[Dict[str, Any]], open_ports: int = 0) -> float:
     """
@@ -54,7 +59,7 @@ async def analyze_with_ai(vulnerabilities: List[Dict[str, Any]], open_ports: int
     
     # Add open port factor
     # Each open port adds a small amount to risk
-    port_contribution = min(open_ports * settings.OPEN_PORT_FACTOR, 1.0)
+    port_contribution = min(open_ports * settings.OPEN_PORT_FACTOR, MAX_PORT_CONTRIBUTION)
     score += port_contribution
     
     # Normalization logic
@@ -69,11 +74,11 @@ async def analyze_with_ai(vulnerabilities: List[Dict[str, Any]], open_ports: int
     # This makes lower scores more sensitive and prevents outliers
     if score > 0:
         # Use a sigmoid-like function for smooth normalization
-        normalized_score = 10.0 * (score / (score + 15.0))
+        normalized_score = MAX_RISK_SCORE * (score / (score + NORMALIZATION_FACTOR))
     else:
         normalized_score = 0.0
     
-    final_score = min(round(normalized_score, 2), 10.0)
+    final_score = min(round(normalized_score, 2), MAX_RISK_SCORE)
     
     logger.info(
         f"Risk score calculated: {final_score} | "

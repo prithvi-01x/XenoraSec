@@ -10,6 +10,11 @@ from app.schemas.scan import ScanStatus
 
 logger = get_logger(__name__)
 
+# Constants
+RETRY_DELAY_SECONDS = 2  # Delay between retry attempts
+LOCALHOST_TIMING = "T5"  # Aggressive timing for localhost scans
+DEFAULT_TIMING_FALLBACK = "T4"  # Default timing if not set
+
 
 class NmapScanner:
     """
@@ -41,7 +46,7 @@ class NmapScanner:
         
         # Optimize for localhost
         if target.startswith("127.") or target == "localhost":
-            self.timing = "T5"
+            self.timing = LOCALHOST_TIMING
             logger.debug("Using aggressive timing for localhost")
         
         for attempt in range(self.max_retries):
@@ -57,7 +62,7 @@ class NmapScanner:
                 
                 if attempt < self.max_retries - 1:
                     logger.warning(f"Nmap retry {attempt + 1}/{self.max_retries} for {target}")
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(RETRY_DELAY_SECONDS)
             
             except Exception as e:
                 logger.error(f"Nmap scan exception (attempt {attempt + 1}): {e}")
@@ -70,7 +75,14 @@ class NmapScanner:
                         "total_ports": 0
                     }
         
-        return result
+        # If we reach here, all retries failed without returning
+        return {
+            "status": ScanStatus.FAILED.value,
+            "error": "All retry attempts failed without completing scan",
+            "target": target,
+            "ports": [],
+            "total_ports": 0
+        }
     
     async def _execute_scan(self, target: str) -> Dict[str, Any]:
         """Execute single Nmap scan attempt"""

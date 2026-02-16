@@ -10,6 +10,12 @@ from app.schemas.scan import ScanStatus
 
 logger = get_logger(__name__)
 
+# Constants
+BUFFER_SPLIT_RATIO = 2  # Keep 1/2 of buffer when overflow occurs
+LOCALHOST_RATE_LIMIT = 200  # Higher rate limit for localhost scans
+ERROR_RATE_THRESHOLD = 0.2  # 20% error rate triggers partial status
+MAX_ERROR_LOGS = 5  # Maximum number of parse errors to log
+
 
 class NucleiScanner:
     """
@@ -46,7 +52,7 @@ class NucleiScanner:
         
         # Optimize for localhost
         if "127.0.0.1" in target or "localhost" in target:
-            self.rate_limit = 200
+            self.rate_limit = LOCALHOST_RATE_LIMIT
             logger.debug("Using higher rate limit for localhost")
         
         command = self._build_command(target)
@@ -94,8 +100,8 @@ class NucleiScanner:
                 # Prevent buffer overflow
                 if len(buffer) > self.max_buffer_size:
                     logger.warning("Buffer size exceeded, discarding oldest data")
-                    # Keep only last 50% of buffer
-                    buffer = buffer[len(buffer) // 2:]
+                    # Keep only last portion of buffer based on split ratio
+                    buffer = buffer[len(buffer) // BUFFER_SPLIT_RATIO:]
                 
                 # Process complete lines
                 while "\n" in buffer:
@@ -114,7 +120,7 @@ class NucleiScanner:
                             vulnerabilities.append(vuln)
                     except json.JSONDecodeError:
                         error_count += 1
-                        if error_count <= 5:  # Log first few errors only
+                        if error_count <= MAX_ERROR_LOGS:  # Log first few errors only
                             logger.debug(f"Failed to parse JSON line: {line[:100]}")
                     
                     # Safety cap on vulnerabilities
@@ -150,7 +156,7 @@ class NucleiScanner:
         
         # Determine final status
         status = ScanStatus.COMPLETED.value
-        if line_count > 0 and error_count > line_count * 0.2:
+        if line_count > 0 and error_count > line_count * ERROR_RATE_THRESHOLD:
             status = ScanStatus.PARTIAL.value
             logger.warning(f"High error rate in Nuclei scan: {error_count}/{line_count}")
         

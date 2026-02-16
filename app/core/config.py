@@ -1,6 +1,7 @@
 # app/core/config.py
 
 from pydantic_settings import BaseSettings
+from pydantic import Field
 from typing import Optional, List
 from functools import lru_cache
 
@@ -47,7 +48,7 @@ class Settings(BaseSettings):
     ALLOW_PRIVATE_IP_SCANNING: bool = False
     
     # Target restrictions
-    TARGET_BLACKLIST: List[str] = []  # e.g., ["military.gov", "192.168.1.1"]
+    TARGET_BLACKLIST: List[str] = Field(default_factory=list)  # e.g., ["military.gov", "192.168.1.1"]
     TARGET_WHITELIST: Optional[List[str]] = None  # If set, only these allowed
     
     MAX_TARGET_LENGTH: int = 253
@@ -67,14 +68,14 @@ class Settings(BaseSettings):
     AUTO_CLEANUP_ENABLED: bool = False
     
     # ==================== AI RISK SCORING ====================
-    RISK_SCORE_WEIGHTS: dict = {
+    RISK_SCORE_WEIGHTS: dict = Field(default_factory=lambda: {
         "critical": 5.0,
         "high": 3.0,
         "medium": 2.0,
         "low": 1.0,
-        "info": 0.2,
+        "info": 0.5,  # Fixed: Changed from 0.2 to 0.5 to match documentation
         "unknown": 0.5
-    }
+    })
     
     CVSS_MULTIPLIER: float = 0.15
     OPEN_PORT_FACTOR: float = 0.05
