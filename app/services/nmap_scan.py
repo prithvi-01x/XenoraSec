@@ -146,19 +146,48 @@ class NmapScanner:
             }
     
     def _parse_xml(self, xml_data: str, target: str) -> Dict[str, Any]:
-        """Parse Nmap XML output"""
+        """
+        Parse Nmap XML output with fallback for partial data recovery.
+        
+        If XML is corrupted, attempts to parse what's available and returns
+        PARTIAL status instead of FAILED.
+        """
+        
+        is_partial_recovery = False
         
         try:
             root = ET.fromstring(xml_data)
         except ET.ParseError as e:
             logger.error(f"XML parse error: {e}")
-            return {
-                "status": ScanStatus.FAILED.value,
-                "error": "Failed to parse Nmap XML output",
-                "target": target,
-                "ports": [],
-                "total_ports": 0
-            }
+            
+            # Attempt to recover partial XML data
+            try:
+                # Find the last complete closing tag
+                last_close = xml_data.rfind('</')
+                if last_close > 0:
+                    # Try to close the XML properly
+                    truncated = xml_data[:last_close]
+                    # Add closing tags for common Nmap structure
+                    if '</host>' not in truncated[max(0, last_close-100):]:
+                        truncated += '</host>'
+                    if '</nmaprun>' not in truncated:
+                        truncated += '</nmaprun>'
+                    
+                    root = ET.fromstring(truncated)
+                    is_partial_recovery = True
+                    logger.warning(f"Recovered partial XML data for {target}")
+                else:
+                    raise ET.ParseError("Cannot recover XML")
+                    
+            except (ET.ParseError, Exception) as recovery_error:
+                logger.error(f"XML recovery failed: {recovery_error}")
+                return {
+                    "status": ScanStatus.FAILED.value,
+                    "error": f"Failed to parse Nmap XML output: {str(e)}",
+                    "target": target,
+                    "ports": [],
+                    "total_ports": 0
+                }
         
         ports_data: List[Dict[str, Any]] = []
         host_info = {}
@@ -206,8 +235,11 @@ class NmapScanner:
                     
                     ports_data.append(port_data)
         
+        # Determine status based on whether recovery was needed
+        status = ScanStatus.PARTIAL.value if is_partial_recovery else ScanStatus.COMPLETED.value
+        
         return {
-            "status": ScanStatus.COMPLETED.value,
+            "status": status,
             "target": target,
             "host_info": host_info,
             "ports": ports_data,

@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, and_
 from sqlalchemy.exc import SQLAlchemyError
 from typing import Optional, List, Tuple
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, UTC, timedelta
 
 from app.db.models import ScanResult
 from app.schemas.scan import ScanStatus
@@ -94,7 +94,7 @@ async def update_scan_result(
         scan.status = status
         scan.risk_score = risk_score
         scan.duration = duration
-        scan.updated_at = datetime.now(timezone.utc)
+        scan.updated_at = datetime.now(UTC)
         
         await db.commit()
         await db.refresh(scan)
@@ -138,7 +138,7 @@ async def mark_scan_failed(
         scan.status = status
         scan.error_message = error
         scan.result = {"error": error}
-        scan.updated_at = datetime.now(timezone.utc)
+        scan.updated_at = datetime.now(UTC)
         
         await db.commit()
         await db.refresh(scan)
@@ -208,7 +208,10 @@ async def get_scan_history(
         if status:
             filters.append(ScanResult.status == status)
         if target:
-            filters.append(ScanResult.target.like(f"%{target}%"))
+            # Escape LIKE wildcards to prevent filter bypass
+            # Users shouldn't be able to use % or _ as wildcards
+            escaped_target = target.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+            filters.append(ScanResult.target.like(f"%{escaped_target}%", escape='\\'))
         
         if filters:
             query = query.where(and_(*filters))
@@ -271,7 +274,7 @@ async def cleanup_old_scans(
     days: Optional[int] = None
 ) -> int:
     """
-    Delete scans older than specified days.
+    Delete scans older than specified days using bulk delete.
     
     Args:
         db: Database session
@@ -284,19 +287,15 @@ async def cleanup_old_scans(
         days = settings.SCAN_RETENTION_DAYS
     
     try:
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
+        cutoff_date = datetime.now(UTC) - timedelta(days=days)
         
-        query = select(ScanResult).where(ScanResult.created_at < cutoff_date)
-        result = await db.execute(query)
-        old_scans = result.scalars().all()
-        
-        count = 0
-        for scan in old_scans:
-            await db.delete(scan)
-            count += 1
-        
+        # Bulk delete in a single query - much faster than row-by-row
+        from sqlalchemy import delete
+        stmt = delete(ScanResult).where(ScanResult.created_at < cutoff_date)
+        result = await db.execute(stmt)
         await db.commit()
         
+        count = result.rowcount
         logger.info(f"Cleaned up {count} scans older than {days} days")
         return count
         

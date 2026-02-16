@@ -78,7 +78,7 @@ async def analyze_with_ai(vulnerabilities: List[Dict[str, Any]], open_ports: int
     logger.info(
         f"Risk score calculated: {final_score} | "
         f"vulns={len(vulnerabilities)}, ports={open_ports}, "
-        f"raw_score={round(score, 2)}, avg_cvss={round(sum(cvss_scores) / len(cvss_scores), 2) if cvss_scores else 0}",
+        f"raw_score={round(score, 2)}, avg_cvss={round(sum(cvss_scores) / max(len(cvss_scores), 1), 2) if cvss_scores else 0}",
         extra={"risk_score": final_score}
     )
     

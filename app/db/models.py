@@ -1,7 +1,7 @@
 # app/db/models.py
 
 from sqlalchemy import Column, Integer, String, Float, DateTime, JSON, Index, Text
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from app.db.database import Base
 
 
@@ -41,7 +41,7 @@ class ScanResult(Base):
     duration = Column(Float, nullable=True)
     
     # Optional: parent scan_id for retries
-    parent_scan_id = Column(String(36), nullable=True, index=True)
+    parent_scan_id = Column(String(36), nullable=True)
     
     # Error message if failed
     error_message = Column(Text, nullable=True)
@@ -49,15 +49,15 @@ class ScanResult(Base):
     # Timestamps
     created_at = Column(
         DateTime,
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
         index=True  # Index for sorting by creation time
     )
     
     updated_at = Column(
         DateTime,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
         nullable=False,
         index=True  # Index for sorting by update time
     )
@@ -72,6 +72,9 @@ class ScanResult(Base):
         
         # Index for target-based queries
         Index('ix_scan_target_created', 'target', 'created_at'),
+        
+        # Index for parent scan relationships
+        Index('ix_scan_parent', 'parent_scan_id'),
     )
     
     def __repr__(self):

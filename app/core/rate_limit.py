@@ -24,7 +24,7 @@ class RateLimiter:
         self.last_cleanup = time.time()
     
     def _cleanup_old_entries(self):
-        """Periodic cleanup to prevent memory leaks"""
+        """Periodic cleanup to prevent memory leaks by removing inactive IPs"""
         now = time.time()
         
         # Cleanup every 5 minutes
@@ -33,20 +33,28 @@ class RateLimiter:
         
         self.last_cleanup = now
         
-        # Remove empty deques
+        # Remove IPs that haven't made requests in the last hour
+        cutoff_hour = now - 3600  # 1 hour
+        
+        # Cleanup per-minute tracking (keep only if has recent timestamps)
         self.requests_per_minute = {
             ip: timestamps 
             for ip, timestamps in self.requests_per_minute.items() 
-            if timestamps
+            if timestamps and timestamps[-1] > cutoff_hour
         }
         
+        # Cleanup per-hour tracking (keep only if not empty)
+        # We keep hour tracking longer since the window is 1 hour
         self.requests_per_hour = {
             ip: timestamps 
             for ip, timestamps in self.requests_per_hour.items() 
             if timestamps
         }
         
-        logger.debug(f"Rate limiter cleanup: {len(self.requests_per_minute)} IPs tracked")
+        logger.debug(
+            f"Rate limiter cleanup: {len(self.requests_per_minute)} IPs in minute tracking, "
+            f"{len(self.requests_per_hour)} IPs in hour tracking"
+        )
     
     def _remove_old_timestamps(self, timestamps: deque, window_seconds: int) -> None:
         """Remove timestamps older than the window"""

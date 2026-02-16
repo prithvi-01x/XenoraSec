@@ -32,15 +32,21 @@ class SeverityLevel(str, Enum):
 # ==================== REQUEST SCHEMAS ====================
 
 class ScanOptions(BaseModel):
-    """Optional settings for a scan"""
+    """Optional scan configuration overrides"""
     port_range: Optional[str] = "1-1000"
     nmap_timing: Optional[str] = "T4"
     nuclei_templates: Optional[List[str]] = ["cve", "misconfig", "exposure"]
     concurrency: Optional[int] = 10
     timeout_minutes: Optional[int] = 30
     rate_limit: Optional[int] = 100
-    allow_private: Optional[bool] = False
-    allow_localhost: Optional[bool] = True
+    allow_private: bool = Field(
+        default=False,
+        description="Allow scanning of private IP addresses (must be globally enabled)"
+    )
+    allow_localhost: bool = Field(
+        default=True,
+        description="Allow scanning of localhost/127.0.0.1"
+    )
 
 class ScanCreateRequest(BaseModel):
     """Request to create a new scan"""

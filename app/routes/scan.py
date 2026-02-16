@@ -59,9 +59,27 @@ async def start_scan(
     Returns scan_id to track the scan progress.
     """
     
-    # Validate target with optional security overrides
-    allow_private = payload.options.allow_private if payload.options else False
-    allow_localhost = payload.options.allow_localhost if payload.options else True
+    # Security validation: Client options can only be MORE restrictive than global settings
+    # Users cannot bypass global security policies
+    
+    # Private IP scanning: Only allow if globally enabled AND client requests it
+    if payload.options and payload.options.allow_private:
+        if not settings.ALLOW_PRIVATE_IP_SCANNING:
+            logger.warning(
+                f"Attempt to bypass ALLOW_PRIVATE_IP_SCANNING blocked for target: {payload.target}",
+                extra={"target": payload.target, "client_ip": request.client.host if request.client else "unknown"}
+            )
+        allow_private = settings.ALLOW_PRIVATE_IP_SCANNING and payload.options.allow_private
+    else:
+        allow_private = False
+    
+    # Localhost scanning: Respect global setting, allow client to be more restrictive
+    if payload.options and not payload.options.allow_localhost:
+        allow_localhost = False  # Client wants to be more restrictive
+    elif not settings.ALLOW_LOCALHOST_SCANNING:
+        allow_localhost = False  # Global policy enforced
+    else:
+        allow_localhost = True  # Default behavior
     
     is_valid, error_msg, metadata = validate_target(
         payload.target,
@@ -111,7 +129,7 @@ async def start_scan(
 
 @router.get(
     "/results/{scan_id}",
-    response_model=None,
+    response_model=ScanResultResponse,
     responses={404: {"model": ErrorResponse}}
 )
 async def get_results(
@@ -129,7 +147,7 @@ async def get_results(
     # Sanitize scan_id
     try:
         scan_id = sanitize_scan_id(scan_id)
-    except Exception as e:
+    except (ValueError, TargetValidationError) as e:
         raise HTTPException(status_code=400, detail="Invalid scan_id format")
     
     # Get scan from database
@@ -280,7 +298,7 @@ async def retry_scan(
     # Get original scan
     try:
         scan_id = sanitize_scan_id(scan_id)
-    except Exception:
+    except (ValueError, TargetValidationError):
         raise HTTPException(status_code=400, detail="Invalid scan_id format")
     
     original_scan = await get_scan(db, scan_id)
@@ -351,7 +369,7 @@ async def delete_scan_endpoint(
     
     try:
         scan_id = sanitize_scan_id(scan_id)
-    except Exception:
+    except (ValueError, TargetValidationError):
         raise HTTPException(status_code=400, detail="Invalid scan_id format")
     
     deleted = await delete_scan(db, scan_id)
