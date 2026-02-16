@@ -7,10 +7,10 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # install nuclei
-RUN wget https://github.com/projectdiscovery/nuclei/releases/latest/download/nuclei_2.9.15_linux_amd64.zip && \
-    unzip nuclei_2.9.15_linux_amd64.zip && \
+RUN wget https://github.com/projectdiscovery/nuclei/releases/latest/download/nuclei-linux-amd64.zip && \
+    unzip nuclei-linux-amd64.zip && \
     mv nuclei /usr/local/bin/ && \
-    rm nuclei_2.9.15_linux_amd64.zip
+    rm nuclei-linux-amd64.zip
 
 WORKDIR /app
 COPY . .
@@ -18,3 +18,4 @@ COPY . .
 RUN pip install --no-cache-dir -r requirements.txt
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "10000"]
+
