@@ -451,3 +451,44 @@ await asyncio.wait_for(
 - [12-Factor App](https://12factor.net/)
 - [Nmap Documentation](https://nmap.org/docs.html)
 - [Nuclei Documentation](https://nuclei.projectdiscovery.io/)
+
+---
+
+## 📊 Risk Scoring Algorithm
+
+The AI risk scoring system uses a weighted algorithm to calculate a normalized risk score (0-10) for each target.
+
+### Severity Weights
+- **Critical**: 5.0
+- **High**: 3.0
+- **Medium**: 2.0
+- **Low**: 1.0
+- **Info**: 0.5
+
+### Calculation Formula
+```python
+# Base score calculation
+base_score = sum(severity_weight) + (CVSS_scores * 1.5) + (open_ports * 0.05)
+normalized_score = 10 * (base_score / (base_score + 15))
+```
+
+This normalization ensures that scores never exceed 10.0 and critical findings have maximum impact.
+
+---
+
+## 🚢 Production Deployment Architecture
+
+For production environments, the recommended architecture is:
+
+```
+[Load Balancer] -> [Nginx Reverse Proxy] -> [Uvicorn Workers] -> [FastAPI App]
+                                                                     |
+                                                                     v
+                                                             [PostgreSQL DB]
+```
+
+### Deployment Checklist
+1. **Database**: Use PostgreSQL with `asyncpg` driver
+2. **Server**: Run behind Nginx with SSL/TLS
+3. **Workers**: Run multiple Uvicorn workers (`workers = 2 * CPU + 1`)
+4. **Security**: Set `DEBUG=False`, `ALLOW_PRIVATE_IP_SCANNING=False`, `RATE_LIMIT_ENABLED=True`
