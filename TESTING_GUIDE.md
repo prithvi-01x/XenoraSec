@@ -4,7 +4,7 @@
 
 Ensure your backend is running:
 ```bash
-cd /home/gabimaruu/Desktop/vuln-gui
+cd /path/to/xenorasec
 source venv/bin/activate
 python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
