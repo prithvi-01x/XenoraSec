@@ -1,29 +1,38 @@
 services:
-  # Backend API
+  # Backend (Docker)
   - type: web
     name: xenorasec-backend
-    env: python
-    region: oregon
+    env: docker
     plan: free
-    buildCommand: |
-      pip install -r requirements.txt
-      apt-get update
-      apt-get install -y nmap
-      wget https://github.com/projectdiscovery/nuclei/releases/latest/download/nuclei_2.9.15_linux_amd64.zip
-      unzip nuclei_2.9.15_linux_amd64.zip
-      mv nuclei /usr/local/bin/
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    region: oregon
+    dockerfilePath: ./Dockerfile.render
+    autoDeploy: true
+
     envVars:
       - key: DATABASE_URL
-        value: sqlite+aiosqlite:///./scans.db
+        value: sqlite+aiosqlite:////tmp/scans.db
+      - key: DEBUG
+        value: false
       - key: ALLOW_LOCALHOST_SCANNING
-        value: true
+        value: false
       - key: ALLOW_PRIVATE_IP_SCANNING
         value: false
-      - key: PYTHON_VERSION
-        value: 3.11.9
-    
-  # Frontend (Static Site)
+      - key: GLOBAL_SCAN_TIMEOUT
+        value: 180
+      - key: NMAP_TIMEOUT
+        value: 120
+      - key: NUCLEI_TIMEOUT
+        value: 120
+      - key: MAX_TARGETS_PER_SCAN
+        value: 1
+      - key: NMAP_MAX_PORTS
+        value: 1000
+      - key: ALLOWED_ORIGINS
+        value: https://xenorasec-frontend.onrender.com,http://localhost:5173
+      - key: PYTHONUNBUFFERED
+        value: 1
+
+  # Frontend
   - type: web
     name: xenorasec-frontend
     env: static
