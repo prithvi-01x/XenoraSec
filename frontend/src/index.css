@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #0f172a;
+  --color-surface: #1e293b;
+  --color-surface-light: #334155;
+  --color-primary: #3b82f6;
+  --color-primary-dark: #2563eb;
+  --color-success: #22c55e;
+  --color-danger: #ef4444;
+  --color-warning: #f59e0b;
+  --color-info: #6b7280;
+  --color-critical: #dc2626;
+  --color-high: #f97316;
+  --color-medium: #eab308;
+  --color-low: #22c55e;
+  --font-family-sans: Inter, system-ui, sans-serif;
+}
+
+body {
+  background-color: var(--color-background);
+  color: rgb(243 244 246);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@layer components {
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply bg-primary hover:bg-primary-dark text-white focus:ring-primary;
+  }
+
+  .btn-danger {
+    @apply bg-danger hover:bg-red-600 text-white focus:ring-danger;
+  }
+
+  .btn-secondary {
+    @apply bg-surface hover:bg-surface-light text-gray-100 focus:ring-gray-500;
+  }
+
+  .btn-outline {
+    @apply border border-gray-600 hover:bg-surface text-gray-100 focus:ring-gray-500;
+  }
+
+  .btn-sm {
+    @apply px-3 py-1.5 text-sm;
+  }
+
+  .card {
+    @apply bg-surface rounded-lg border border-gray-700 p-6;
+  }
+
+  .input {
+    @apply w-full px-4 py-2 bg-background border border-gray-600 rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-critical {
+    @apply bg-critical/20 text-critical border border-critical/30;
+  }
+
+  .badge-high {
+    @apply bg-high/20 text-high border border-high/30;
+  }
+
+  .badge-medium {
+    @apply bg-medium/20 text-medium border border-medium/30;
+  }
+
+  .badge-low {
+    @apply bg-low/20 text-low border border-low/30;
+  }
+
+  .badge-info {
+    @apply bg-info/20 text-info border border-info/30;
+  }
+
+  .badge-success {
+    @apply bg-success/20 text-success border border-success/30;
+  }
+
+  .badge-running {
+    @apply bg-primary/20 text-primary border border-primary/30;
+  }
+
+  .badge-failed {
+    @apply bg-danger/20 text-danger border border-danger/30;
+  }
+}

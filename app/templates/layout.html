@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VulnScanner | {% block title %}Dashboard{% endblock %}</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/css/styles.css">
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    {% block head %}{% endblock %}
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Persistent Sidebar -->
+        {% include 'components/sidebar.html' %}
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Persistent Top Navigation -->
+            {% include 'components/navbar.html' %}
+
+            <!-- Dynamic Content Container -->
+            <div id="app-content" class="app-content-wrapper">
+                <!-- Loading Indicator -->
+                <div id="page-loader" class="page-loader" style="display: none;">
+                    <div class="loader-spinner"></div>
+                    <p>Loading...</p>
+                </div>
+
+                <!-- Main Content (Swapped Dynamically) -->
+                <div class="container" id="main-container">
+                    {% block content %}{% endblock %}
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Persistent Scan Queue Widget -->
+    <div id="scan-queue-widget" class="scan-queue-widget">
+        <div class="queue-header">
+            <h4>
+                <i class="fa-solid fa-list-check"></i>
+                Active Scans
+            </h4>
+            <button class="btn-icon" id="toggle-queue">
+                <i class="fa-solid fa-chevron-down"></i>
+            </button>
+        </div>
+        <div class="queue-body" id="queue-body">
+            <div class="queue-empty">No active scans</div>
+        </div>
+    </div>
+
+    <!-- Global Notification Container -->
+    <div id="notification-container"></div>
+
+    <!-- Core SPA Router Script -->
+    <script src="/static/js/spa-router.js"></script>
+
+    <!-- Global Utilities -->
+    <script src="/static/js/utils.js"></script>
+    <script src="/static/js/scan-queue-widget.js"></script>
+
+    <!-- Chart.js Helper -->
+    <script src="/static/js/charts.js"></script>
+
+    <!-- Page-Specific Scripts (Loaded Dynamically) -->
+    <div id="dynamic-scripts">
+        {% block scripts %}{% endblock %}
+    </div>
+
+    <!-- Initialize SPA -->
+    <script>
+        // Initialize SPA router on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            window.SPARouter.init();
+            window.ScanQueueWidget.init();
+        });
+    </script>
+</body>
+
+</html>

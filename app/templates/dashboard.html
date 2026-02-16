@@ -1,0 +1,87 @@
+{% extends "layout.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="stats-grid">
+    <div class="card">
+        <div class="card-title">
+            <span>Total Scans</span>
+            <i class="fa-solid fa-list-check stat-icon"></i>
+        </div>
+        <div class="card-value" id="stats-total">0</div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">
+            <span>Running</span>
+            <i class="fa-solid fa-spinner stat-icon"></i>
+        </div>
+        <div class="card-value" id="stats-running">0</div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">
+            <span>Avg Risk Score</span>
+            <i class="fa-solid fa-chart-line stat-icon"></i>
+        </div>
+        <div class="card-value" id="stats-avg-risk">---</div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">
+            <span>Critical Findings</span>
+            <i class="fa-solid fa-triangle-exclamation stat-icon"></i>
+        </div>
+        <div class="card-value" id="stats-critical">0</div>
+    </div>
+</div>
+
+<div class="charts-row">
+    <div class="chart-card">
+        <div class="section-header">
+            <h3 class="section-title">Risk Trend (Last 30 Days)</h3>
+        </div>
+        <canvas id="riskTrendChart"></canvas>
+    </div>
+
+    <div class="chart-card">
+        <div class="section-header">
+            <h3 class="section-title">Severity Distribution</h3>
+        </div>
+        <canvas id="severityPieChart"></canvas>
+    </div>
+</div>
+
+<div class="table-container">
+    <div class="section-header" style="padding: 1.5rem; border-bottom: 1px solid var(--border); margin-bottom: 0;">
+        <h3 class="section-title">Recent Scans</h3>
+        <a href="/history" class="btn btn-outline btn-sm">View All</a>
+    </div>
+
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Target</th>
+                <th>Status</th>
+                <th>Risk Score</th>
+                <th>Date</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody id="recent-scans-body">
+            <!-- Populated via JS -->
+            <tr>
+                <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                    <div class="spinner" style="margin-bottom: 0.5rem;"></div>
+                    <div>Loading recent scans...</div>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/dashboard.js"></script>
+{% endblock %}

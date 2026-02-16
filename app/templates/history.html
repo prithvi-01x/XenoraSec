@@ -1,0 +1,55 @@
+{% extends "layout.html" %}
+
+{% block title %}Scan History{% endblock %}
+
+{% block content %}
+<div class="card" style="margin-bottom: 2rem;">
+    <div class="section-header">
+        <div class="filters" style="display: flex; gap: 1rem; align-items: center;">
+            <input type="text" id="search-input" class="search-input" placeholder="Search target...">
+
+            <select id="status-filter" class="select-input">
+                <option value="">All Statuses</option>
+                <option value="completed">Completed</option>
+                <option value="running">Running</option>
+                <option value="failed">Failed</option>
+                <option value="timeout">Timeout</option>
+            </select>
+
+            <button class="btn btn-primary" onclick="loadHistory(1)">
+                <i class="fa-solid fa-filter"></i> Filter
+            </button>
+        </div>
+
+        <button class="btn btn-outline" onclick="loadHistory(currentPage)">
+            <i class="fa-solid fa-rotate-right"></i> Refresh
+        </button>
+    </div>
+
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Target</th>
+                    <th>Status</th>
+                    <th>Risk Score</th>
+                    <th>Duration</th>
+                    <th>Started At</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="history-body">
+                <!-- Populated via JS -->
+            </tbody>
+        </table>
+    </div>
+
+    <div class="pagination" id="pagination-controls">
+        <!-- Populated via JS -->
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/history.js"></script>
+{% endblock %}
