@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11.9-slim
 
 RUN apt-get update && apt-get install -y \
     nmap \
@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y \
     golang \
     && rm -rf /var/lib/apt/lists/*
 
-# install nuclei + templates
+# install nuclei
 RUN go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest && \
     mv /root/go/bin/nuclei /usr/local/bin/ && \
     nuclei -update-templates
