@@ -7,9 +7,10 @@ RUN apt-get update && apt-get install -y \
     golang \
     && rm -rf /var/lib/apt/lists/*
 
-# install nuclei via go (stable method)
+# install nuclei + templates
 RUN go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest && \
-    mv /root/go/bin/nuclei /usr/local/bin/
+    mv /root/go/bin/nuclei /usr/local/bin/ && \
+    nuclei -update-templates
 
 WORKDIR /app
 COPY . .
