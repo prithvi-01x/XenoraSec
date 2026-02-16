@@ -1,4 +1,4 @@
-# 🛡️ Project Summary: AI Vulnerability Scanner (Full-Stack)
+# 🛡️ Project Summary: XenoraSec (Full-Stack Advanced Vulnerability Scanner)
 
 ## 🚀 Overview
 A high-performance, SaaS-level **AI-powered Vulnerability Scanner** designed for modern security workflows. This project bridges the gap between raw security data and actionable insights by orchestrating industry-standard tools with an intelligent, multi-factor risk assessment engine.

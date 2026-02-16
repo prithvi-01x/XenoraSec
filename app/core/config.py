@@ -7,12 +7,12 @@ from functools import lru_cache
 
 class Settings(BaseSettings):
     """
-    Centralized configuration for the AI Vulnerability Scanner.
+    Centralized configuration for XenoraSec.
     All settings can be overridden via environment variables.
     """
     
     # ==================== APPLICATION ====================
-    APP_NAME: str = "AI Vulnerability Scanner"
+    APP_NAME: str = "XenoraSec"
     APP_VERSION: str = "2.0.0"
     DEBUG: bool = False
     

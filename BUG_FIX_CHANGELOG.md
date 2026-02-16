@@ -1,4 +1,4 @@
-# Bug Fix Changelog - AI Vulnerability Scanner
+# Bug Fix Changelog - XenoraSec
 
 ## Version: Bug Fix Release
 **Date:** 2026-02-16

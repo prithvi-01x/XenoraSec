@@ -68,3 +68,35 @@ Thumbs.db
 *.bin
 *.ckpt
 
+# =========================
+# Temporary / Generated files
+# =========================
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# =========================
+# Test outputs & Reports
+# =========================
+.pytest_cache/
+.coverage
+htmlcov/
+test-results/
+coverage/
+
+# =========================
+# Optional: Documentation (uncomment if you don't want to track these)
+# =========================
+# AUTOMATED_VERIFICATION_REPORT.md
+# BUG_FIX_CHANGELOG.md
+# BUG_FIX_SUMMARY.md
+# FEATURE_PRESERVATION_VERIFICATION.md
+# FIXES_COMPLETE.md
+# INTEGRATION_TEST_RESULTS.md
+# REFACTOR_VERIFICATION.md
+# SPA_CONVERSION_SUMMARY.md
+# report.md
+# changelog.md
+
