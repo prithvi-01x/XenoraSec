@@ -4,13 +4,12 @@ RUN apt-get update && apt-get install -y \
     nmap \
     wget \
     unzip \
+    golang \
     && rm -rf /var/lib/apt/lists/*
 
-# install nuclei
-RUN wget https://github.com/projectdiscovery/nuclei/releases/latest/download/nuclei-linux-amd64.zip && \
-    unzip nuclei-linux-amd64.zip && \
-    mv nuclei /usr/local/bin/ && \
-    rm nuclei-linux-amd64.zip
+# install nuclei via go (stable method)
+RUN go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest && \
+    mv /root/go/bin/nuclei /usr/local/bin/
 
 WORKDIR /app
 COPY . .
