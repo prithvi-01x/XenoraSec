@@ -168,7 +168,8 @@ app.include_router(health.router)
 app.include_router(scan.router)
 
 # Mount static files
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
+# Static files mount removed in favor of React frontend
+# app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 
 

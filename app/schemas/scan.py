@@ -111,6 +111,13 @@ class VulnerabilityInfo(BaseModel):
     references: Optional[List[str]] = None
     tags: Optional[List[str]] = None
 
+    @validator('cve', 'cwe', pre=True)
+    def convert_list_to_string(cls, v):
+        """Convert list values to comma-separated strings (Nuclei returns lists)"""
+        if isinstance(v, list):
+            return ', '.join(v) if v else None
+        return v
+
 
 class ScanSummary(BaseModel):
     total_vulnerabilities: int

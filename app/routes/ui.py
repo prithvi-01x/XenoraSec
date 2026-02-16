@@ -1,8 +1,6 @@
 # app/routes/ui.py
 
-from fastapi import APIRouter, Request, Depends, HTTPException, Query
-from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, and_
 from datetime import datetime, timedelta
@@ -12,45 +10,9 @@ from app.db.models import ScanResult
 from app.schemas.scan import ScanStatus
 
 router = APIRouter(include_in_schema=False)
-templates = Jinja2Templates(directory="app/templates")
-
-
-# ==================== PUBLIC UI ROUTES ====================
-
-@router.get("/", response_class=RedirectResponse)
-async def index():
-    return RedirectResponse(url="/dashboard")
-
-@router.get("/dashboard", response_class=HTMLResponse)
-async def dashboard(request: Request):
-    return templates.TemplateResponse("dashboard.html", {"request": request})
-
-@router.get("/scans/new", response_class=HTMLResponse)
-async def new_scan(request: Request):
-    """New scan creation page"""
-    return templates.TemplateResponse("scan_new.html", {"request": request})
-
-@router.get("/scans/progress/{scan_id}", response_class=HTMLResponse)
-async def scan_progress(request: Request, scan_id: str):
-    """Real-time scan progress tracking page"""
-    return templates.TemplateResponse("scan_progress.html", {"request": request, "scan_id": scan_id})
-
-@router.get("/scans/history", response_class=HTMLResponse)
-async def scans_history(request: Request):
-    """Scan history page (renamed from /history)"""
-    return templates.TemplateResponse("history.html", {"request": request})
-
-# Legacy redirect
-@router.get("/history", response_class=RedirectResponse)
-async def history_redirect():
-    return RedirectResponse(url="/scans/history")
-
-@router.get("/scan/{scan_id}", response_class=HTMLResponse)
-async def scan_detail(request: Request, scan_id: str):
-    return templates.TemplateResponse("scan_detail.html", {"request": request, "scan_id": scan_id})
-
 
 # ==================== UI API ROUTES (AJAX) ====================
+# HTML routes have been removed to prioritize the React frontend.
 
 @router.get("/ui/api/dashboard-stats")
 async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
