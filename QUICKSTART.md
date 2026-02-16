@@ -70,7 +70,7 @@ cd ..
 **Terminal 1 - Backend:**
 ```bash
 source venv/bin/activate
-python app/main.py
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 **Terminal 2 - Frontend:**
@@ -233,14 +233,15 @@ nuclei -version
 
 **Solution:**
 ```bash
-# Find process
-lsof -i :8000
+# Quick one-liner to kill process on port 8000
+lsof -ti :8000 | xargs kill -9 2>/dev/null
 
-# Kill it
+# Or find and kill manually
+lsof -i :8000
 kill -9 <PID>
 
 # Or use different port
-uvicorn app.main:app --port 8001
+uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 ```
 
 ### Issue: CORS errors
@@ -253,15 +254,18 @@ ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 # Restart backend
 ```
 
-### Issue: Module not found
+### Issue: Module not found or "jinja2 must be installed"
 
 **Solution:**
 ```bash
 # Ensure venv is activated
 source venv/bin/activate
 
-# Reinstall dependencies
+# Reinstall dependencies (includes jinja2)
 pip install -r requirements.txt
+
+# Or install jinja2 separately if needed
+pip install jinja2
 ```
 
 ---
