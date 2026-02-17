@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     MAX_BUFFER_SIZE: int = 1048576  # 1MB max buffer
     
     # ==================== SECURITY ====================
-    ALLOW_LOCALHOST_SCANNING: bool = True
+    ALLOW_LOCALHOST_SCANNING: bool = False  # Fix 6: Default False — localhost scanning is rarely needed in prod
     ALLOW_PRIVATE_IP_SCANNING: bool = False
     
     # Target restrictions
