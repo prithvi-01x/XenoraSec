@@ -41,7 +41,31 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
         raise
-    
+
+    # Fix 1: Clean up zombie scans left running from a previous process
+    # (happens on every Render cold-start / crash restart)
+    try:
+        from app.db.database import AsyncSessionLocal
+        from app.db.models import ScanResult
+        from app.schemas.scan import ScanStatus
+        from sqlalchemy import update as sa_update
+
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                sa_update(ScanResult)
+                .where(ScanResult.status == ScanStatus.RUNNING.value)
+                .values(
+                    status=ScanStatus.FAILED.value,
+                    error_message="Server restarted while scan was in progress"
+                )
+            )
+            await db.commit()
+            zombie_count = result.rowcount
+            if zombie_count > 0:
+                logger.warning(f"Cleaned up {zombie_count} zombie scan(s) from previous process")
+    except Exception as e:
+        logger.error(f"Failed to clean up zombie scans: {e}")
+
     logger.info("Application startup complete")
     
     yield
