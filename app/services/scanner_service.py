@@ -162,6 +162,14 @@ async def _execute_scan(
         }
     
     # ==================== AI ANALYSIS ====================
+    # Fix 13: Warn if Nuclei is running despite 0 open ports (likely wasteful)
+    nmap_ports = nmap_result.get("total_ports", 0) if not isinstance(nmap_result, Exception) else 0
+    if nmap_ports == 0 and nmap_result.get("status") == ScanStatus.COMPLETED.value:
+        logger.warning(
+            f"Nmap found 0 open ports on {original_target} — Nuclei scan will likely find nothing. "
+            "Consider skipping Nuclei for hosts with no open ports."
+        )
+
     try:
         analysis = await analyze_vulnerability_report(
             nmap_result=nmap_result,
