@@ -315,32 +315,34 @@ async def get_scan_statistics(db: AsyncSession) -> dict:
         Dictionary with statistics
     """
     try:
+        # Fix 11: Single query with GROUP BY instead of one query per status (was N+1)
+        from sqlalchemy import case as sa_case
+
         total_query = select(func.count(ScanResult.id))
         total_result = await db.execute(total_query)
         total_scans = total_result.scalar() or 0
-        
-        # Count by status
-        status_counts = {}
+
+        # One query to count all statuses at once
+        status_query = select(ScanResult.status, func.count(ScanResult.id)).group_by(ScanResult.status)
+        status_result = await db.execute(status_query)
+        status_counts = {row[0]: row[1] for row in status_result.all()}
+        # Ensure all statuses are present even if count is 0
         for status in ScanStatus:
-            status_query = select(func.count(ScanResult.id)).where(
-                ScanResult.status == status.value
-            )
-            result = await db.execute(status_query)
-            status_counts[status.value] = result.scalar() or 0
-        
-        # Average risk score
+            status_counts.setdefault(status.value, 0)
+
+        # Average risk score for completed scans
         avg_risk_query = select(func.avg(ScanResult.risk_score)).where(
             ScanResult.status == ScanStatus.COMPLETED.value
         )
         avg_result = await db.execute(avg_risk_query)
         avg_risk = avg_result.scalar() or 0.0
-        
+
         return {
             "total_scans": total_scans,
             "status_counts": status_counts,
             "average_risk_score": round(float(avg_risk), 2),
         }
-        
+
     except SQLAlchemyError as e:
         logger.error(f"Failed to get statistics: {e}")
         return {
