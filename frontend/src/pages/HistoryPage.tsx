@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useScanHistory, useDeleteScan } from '../hooks/useApi';
 import { LoadingState } from '../components/LoadingSpinner';
@@ -9,24 +9,38 @@ import { Trash2, Eye, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const ITEMS_PER_PAGE = 10;
 
+// Simple debounce hook — waits for user to stop typing before firing
+function useDebounce<T>(value: T, delayMs: number): T {
+    const [debounced, setDebounced] = useState(value);
+    useEffect(() => {
+        const timer = setTimeout(() => setDebounced(value), delayMs);
+        return () => clearTimeout(timer);
+    }, [value, delayMs]);
+    return debounced;
+}
+
 export function HistoryPage() {
     const [page, setPage] = useState(0);
     const [statusFilter, setStatusFilter] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
+    const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+    // Debounce search — only fires query 400ms after user stops typing
+    const debouncedSearch = useDebounce(searchTerm, 400);
 
     const { data, isLoading, error, refetch } = useScanHistory({
         limit: ITEMS_PER_PAGE,
         offset: page * ITEMS_PER_PAGE,
         status: statusFilter || undefined,
-        target: searchTerm || undefined,
+        target: debouncedSearch || undefined,
     });
 
     const deleteScan = useDeleteScan();
 
     const handleDelete = async (scanId: string) => {
-        if (!confirm('Are you sure you want to delete this scan?')) return;
         try {
             await deleteScan.mutateAsync(scanId);
+            setDeleteConfirmId(null);
             refetch();
         } catch (err) {
             console.error('Failed to delete scan:', err);
@@ -128,14 +142,31 @@ export function HistoryPage() {
                                                     >
                                                         <Eye className="w-4 h-4" />
                                                     </Link>
-                                                    <button
-                                                        onClick={() => handleDelete(scan.scan_id)}
-                                                        disabled={deleteScan.isPending}
-                                                        className="btn btn-danger btn-sm flex items-center gap-1"
-                                                        title="Delete"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
+                                                    {deleteConfirmId === scan.scan_id ? (
+                                                        <>
+                                                            <button
+                                                                onClick={() => handleDelete(scan.scan_id)}
+                                                                disabled={deleteScan.isPending}
+                                                                className="btn btn-danger btn-sm"
+                                                            >
+                                                                Confirm
+                                                            </button>
+                                                            <button
+                                                                onClick={() => setDeleteConfirmId(null)}
+                                                                className="btn btn-secondary btn-sm"
+                                                            >
+                                                                Cancel
+                                                            </button>
+                                                        </>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => setDeleteConfirmId(scan.scan_id)}
+                                                            className="btn btn-danger btn-sm flex items-center gap-1"
+                                                            title="Delete"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>
