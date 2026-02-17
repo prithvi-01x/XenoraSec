@@ -14,7 +14,9 @@ class RateLimiter:
     """
     In-memory rate limiter using sliding window algorithm.
     
-    For production, use Redis-backed rate limiting.
+    ⚠️  WARNING: State is lost on every server restart (e.g. Render cold-starts).
+    For production with persistent enforcement, replace with a Redis-backed
+    implementation (e.g. fastapi-limiter with aioredis).
     """
     
     def __init__(self):
@@ -103,11 +105,16 @@ class RateLimiter:
         return True, None
     
     def get_client_ip(self, request: Request) -> str:
-        """Extract client IP from request"""
-        # Check for proxy headers
+        """Extract client IP from request.
+        
+        Uses the LAST entry in X-Forwarded-For, which is appended by the
+        trusted reverse proxy (e.g. Render/nginx) and cannot be spoofed by
+        a client sending a fake header.
+        """
         forwarded = request.headers.get("X-Forwarded-For")
         if forwarded:
-            return forwarded.split(",")[0].strip()
+            # Last entry is added by our trusted proxy — cannot be faked
+            return forwarded.split(",")[-1].strip()
         
         real_ip = request.headers.get("X-Real-IP")
         if real_ip:
