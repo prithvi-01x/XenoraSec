@@ -14,13 +14,18 @@ MAX_PORT_CONTRIBUTION = 1.0  # Maximum contribution from open ports
 
 async def analyze_with_ai(vulnerabilities: List[Dict[str, Any]], open_ports: int = 0) -> float:
     """
-    AI-based risk scoring with configurable weights and normalization.
-    
+    Risk scoring using weighted severity formula.
+
+    Note: Despite the name, this is NOT machine learning or an LLM — it is a
+    deterministic weighted-sum formula with sigmoid normalization.  The name
+    is kept for API compatibility but consider renaming to `calculate_risk_score`
+    in a future refactor.
+
     Algorithm:
         1. Sum severity-weighted scores for each vulnerability
         2. Add CVSS scores (if available) with multiplier
         3. Add open port factor
-        4. Normalize to 0-10 scale
+        4. Normalize to 0-10 scale via sigmoid-like function
     
     Args:
         vulnerabilities: List of vulnerability dictionaries
