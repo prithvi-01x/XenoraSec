@@ -86,7 +86,7 @@ export interface ScanHistoryResponse {
 }
 
 export interface QueueInfo {
-    active_scans: number;
+    scans_running: number;        // was incorrectly named active_scans
     max_concurrent_scans: number;
     available_slots: number;
 }
