@@ -1,38 +1,30 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
-import { useScanResults, useRetryScan, useDeleteScan } from '../hooks/useApi';
+import { useState } from 'react';
+import { useScanResults, useRetryScan, useDeleteScan, useCancelScan } from '../hooks/useApi';
 import { LoadingState } from '../components/LoadingSpinner';
 import { ErrorState } from '../components/ErrorState';
 import { RiskScore } from '../components/RiskScore';
 import { StatusBadge } from '../components/StatusBadge';
 import { SeverityBadge } from '../components/SeverityBadge';
 import { formatDuration, formatDate } from '../utils/helpers';
-import { RefreshCw, Trash2, ChevronDown, ExternalLink } from 'lucide-react';
+import { RefreshCw, Trash2, ChevronDown, ExternalLink, XCircle } from 'lucide-react';
 import type { Vulnerability } from '../types/api';
 
 export function ScanResultsPage() {
     const { scanId } = useParams<{ scanId: string }>();
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState<'summary' | 'ports' | 'vulnerabilities' | 'raw'>('summary');
-    const [expandedVuln, setExpandedVuln] = useState<string | null>(null);
+    const [expandedVulnIndex, setExpandedVulnIndex] = useState<number | null>(null);
     const [severityFilter, setSeverityFilter] = useState<string>('all');
     const [searchTerm, setSearchTerm] = useState('');
+    const [deleteConfirm, setDeleteConfirm] = useState(false);
 
-    const { data: scan, isLoading, error, refetch } = useScanResults(scanId!, {
-        refetchInterval: undefined, // Will be set conditionally below
-    });
+    // Polling is now handled inside useScanResults via refetchInterval
+    const { data: scan, isLoading, error, refetch } = useScanResults(scanId!);
 
     const retryScan = useRetryScan();
     const deleteScan = useDeleteScan();
-
-    useEffect(() => {
-        if (scan?.status === 'running') {
-            const timer = setInterval(() => {
-                refetch();
-            }, 3000);
-            return () => clearInterval(timer);
-        }
-    }, [scan?.status, refetch]);
+    const cancelScan = useCancelScan();
 
     const handleRetry = async () => {
         if (!scanId) return;
@@ -45,12 +37,21 @@ export function ScanResultsPage() {
     };
 
     const handleDelete = async () => {
-        if (!scanId || !confirm('Are you sure you want to delete this scan?')) return;
+        if (!scanId) return;
         try {
             await deleteScan.mutateAsync(scanId);
             navigate('/history');
         } catch (err) {
             console.error('Failed to delete scan:', err);
+        }
+    };
+
+    const handleCancel = async () => {
+        if (!scanId) return;
+        try {
+            await cancelScan.mutateAsync(scanId);
+        } catch (err) {
+            console.error('Failed to cancel scan:', err);
         }
     };
 
@@ -79,6 +80,17 @@ export function ScanResultsPage() {
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
+                    {/* Cancel button — only visible while running */}
+                    {scan.status === 'running' && (
+                        <button
+                            onClick={handleCancel}
+                            disabled={cancelScan.isPending}
+                            className="btn btn-secondary flex items-center gap-2"
+                        >
+                            <XCircle className="w-4 h-4" />
+                            {cancelScan.isPending ? 'Cancelling...' : 'Cancel'}
+                        </button>
+                    )}
                     {(scan.status === 'failed' || scan.status === 'timeout') && (
                         <button
                             onClick={handleRetry}
@@ -89,16 +101,45 @@ export function ScanResultsPage() {
                             Retry
                         </button>
                     )}
-                    <button
-                        onClick={handleDelete}
-                        disabled={deleteScan.isPending}
-                        className="btn btn-danger flex items-center gap-2"
-                    >
-                        <Trash2 className="w-4 h-4" />
-                        Delete
-                    </button>
+                    {/* Inline delete confirmation — no more browser confirm() */}
+                    {deleteConfirm ? (
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-danger">Sure?</span>
+                            <button
+                                onClick={handleDelete}
+                                disabled={deleteScan.isPending}
+                                className="btn btn-danger btn-sm"
+                            >
+                                Yes, Delete
+                            </button>
+                            <button
+                                onClick={() => setDeleteConfirm(false)}
+                                className="btn btn-secondary btn-sm"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    ) : (
+                        <button
+                            onClick={() => setDeleteConfirm(true)}
+                            className="btn btn-danger flex items-center gap-2"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                            Delete
+                        </button>
+                    )}
                 </div>
             </div>
+
+            {/* Running indicator */}
+            {scan.status === 'running' && (
+                <div className="flex items-center gap-3 p-4 bg-primary/10 border border-primary/30 rounded-lg">
+                    <div className="w-3 h-3 rounded-full bg-primary animate-pulse" />
+                    <span className="text-sm text-primary font-medium">
+                        Scan in progress — results will appear automatically when complete
+                    </span>
+                </div>
+            )}
 
             {/* Executive Summary */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -142,6 +183,16 @@ export function ScanResultsPage() {
                                     }`}
                             >
                                 {tab}
+                                {tab === 'vulnerabilities' && scan.summary.total_vulnerabilities > 0 && (
+                                    <span className="ml-2 text-xs bg-danger/20 text-danger px-1.5 py-0.5 rounded-full">
+                                        {scan.summary.total_vulnerabilities}
+                                    </span>
+                                )}
+                                {tab === 'ports' && scan.summary.open_ports > 0 && (
+                                    <span className="ml-2 text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded-full">
+                                        {scan.summary.open_ports}
+                                    </span>
+                                )}
                             </button>
                         ))}
                     </div>
@@ -236,7 +287,7 @@ export function ScanResultsPage() {
                                 filteredVulnerabilities.map((vuln, index) => (
                                     <div key={index} className="border border-gray-700 rounded-lg overflow-hidden">
                                         <button
-                                            onClick={() => setExpandedVuln(expandedVuln === vuln.template_id ? null : vuln.template_id)}
+                                            onClick={() => setExpandedVulnIndex(expandedVulnIndex === index ? null : index)}
                                             className="w-full px-4 py-3 flex items-center justify-between hover:bg-surface-light transition-colors"
                                         >
                                             <div className="flex items-center gap-3">
@@ -247,12 +298,11 @@ export function ScanResultsPage() {
                                                 )}
                                             </div>
                                             <ChevronDown
-                                                className={`w-5 h-5 transition-transform ${expandedVuln === vuln.template_id ? 'rotate-180' : ''
-                                                    }`}
+                                                className={`w-5 h-5 transition-transform ${expandedVulnIndex === index ? 'rotate-180' : ''}`}
                                             />
                                         </button>
 
-                                        {expandedVuln === vuln.template_id && (
+                                        {expandedVulnIndex === index && (
                                             <div className="px-4 py-3 bg-background border-t border-gray-700 space-y-3">
                                                 <div>
                                                     <div className="text-sm font-medium text-gray-400 mb-1">Description</div>
@@ -317,3 +367,4 @@ export function ScanResultsPage() {
         </div>
     );
 }
+
