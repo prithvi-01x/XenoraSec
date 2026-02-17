@@ -93,10 +93,16 @@ export const scanApi = {
         return response.data;
     },
 
-    // Cleanup old scans
-    cleanupScans: async (days?: number): Promise<{ scans_deleted: number }> => {
+    // Cancel a running scan
+    cancelScan: async (scanId: string): Promise<{ message: string; scan_id: string }> => {
+        const response = await apiClient.post(`/api/scan/${scanId}/cancel`);
+        return response.data;
+    },
+
+    // Cleanup old scans (requires CLEANUP_SECRET env var set on backend)
+    cleanupScans: async (days?: number, secret?: string): Promise<{ scans_deleted: number }> => {
         const response = await apiClient.post('/api/scan/cleanup', null, {
-            params: days ? { days } : undefined,
+            params: { ...(days ? { days } : {}), ...(secret ? { secret } : {}) },
         });
         return response.data;
     },
