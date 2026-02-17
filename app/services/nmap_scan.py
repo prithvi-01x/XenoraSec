@@ -60,6 +60,11 @@ class NmapScanner:
                     )
                     return result
                 
+                # Fix 3: Never retry a timeout — it will just time out again
+                if result.get("status") == ScanStatus.TIMEOUT.value:
+                    logger.warning(f"Nmap timed out for {target}, not retrying")
+                    return result
+                
                 if attempt < self.max_retries - 1:
                     logger.warning(f"Nmap retry {attempt + 1}/{self.max_retries} for {target}")
                     await asyncio.sleep(RETRY_DELAY_SECONDS)
