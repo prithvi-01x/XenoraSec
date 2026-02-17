@@ -11,13 +11,17 @@ export const queryKeys = {
     health: () => ['health'] as const,
 };
 
-// Scan results query
-export function useScanResults(scanId: string, options?: { refetchInterval?: number }) {
+// Scan results query — auto-polls every 3s while scan is running, stops when done
+export function useScanResults(scanId: string) {
     return useQuery({
         queryKey: queryKeys.scanResults(scanId),
         queryFn: () => scanApi.getScanResults(scanId),
-        refetchInterval: options?.refetchInterval,
         enabled: !!scanId,
+        refetchInterval: (query) => {
+            const status = query.state.data?.status;
+            // Keep polling only while running; stop on any terminal state
+            return status === 'running' ? 3000 : false;
+        },
     });
 }
 
@@ -39,15 +43,16 @@ export function useQueueInfo() {
     return useQuery({
         queryKey: queryKeys.queueInfo(),
         queryFn: () => scanApi.getQueueInfo(),
-        refetchInterval: 5000, // Refresh every 5 seconds
+        refetchInterval: 5000,
     });
 }
 
-// Dashboard stats query
+// Dashboard stats — auto-refresh every 15s so running scan count stays live
 export function useDashboardStats() {
     return useQuery({
         queryKey: queryKeys.dashboardStats(),
         queryFn: () => dashboardApi.getStats(),
+        refetchInterval: 15000,
     });
 }
 
@@ -56,7 +61,7 @@ export function useHealth() {
     return useQuery({
         queryKey: queryKeys.health(),
         queryFn: () => healthApi.getHealth(),
-        refetchInterval: 30000, // Refresh every 30 seconds
+        refetchInterval: 30000,
     });
 }
 
@@ -67,8 +72,22 @@ export function useStartScan() {
     return useMutation({
         mutationFn: (data: ScanCreateRequest) => scanApi.startScan(data),
         onSuccess: () => {
-            // Invalidate relevant queries
             queryClient.invalidateQueries({ queryKey: ['scan', 'history'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.queueInfo() });
+            queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+        },
+    });
+}
+
+// Cancel scan mutation
+export function useCancelScan() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: (scanId: string) => scanApi.cancelScan(scanId),
+        onSuccess: (_data, scanId) => {
+            // Immediately invalidate so the UI reflects cancelled state
+            queryClient.invalidateQueries({ queryKey: queryKeys.scanResults(scanId) });
             queryClient.invalidateQueries({ queryKey: queryKeys.queueInfo() });
             queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
         },
@@ -106,7 +125,8 @@ export function useCleanupScans() {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: (days?: number) => scanApi.cleanupScans(days),
+        mutationFn: ({ days, secret }: { days?: number; secret?: string }) =>
+            scanApi.cleanupScans(days, secret),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['scan', 'history'] });
             queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
