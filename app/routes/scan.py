@@ -36,6 +36,10 @@ router = APIRouter(prefix="/api/scan", tags=["Scan"])
 
 # ==================== START SCAN ====================
 
+# Fix 8: Hold references to background tasks to prevent garbage collection
+_background_tasks: set = set()
+
+
 @router.post(
     "/",
     response_model=ScanCreateResponse,
@@ -91,14 +95,14 @@ async def start_scan(
         logger.warning(f"Invalid target rejected: {payload.target} - {error_msg}")
         raise HTTPException(status_code=400, detail=error_msg)
     
-    # Check scan queue availability
+    # Fix 2: Use atomic try-acquire instead of a racy available_slots check
     queue_info = get_scan_queue_info()
-    if queue_info["available_slots"] <= 0:
+    if queue_info["scans_running"] >= settings.MAX_CONCURRENT_SCANS:
         raise HTTPException(
             status_code=503,
             detail=f"Maximum concurrent scans ({settings.MAX_CONCURRENT_SCANS}) reached. Please try again later."
         )
-    
+
     # Generate scan ID
     scan_id = str(uuid4())
     
@@ -108,10 +112,12 @@ async def start_scan(
     if not scan:
         raise HTTPException(status_code=500, detail="Failed to create scan record")
     
-    # Start scan in background
-    asyncio.create_task(
+    # Fix 8: Hold a reference to the task so it can't be garbage collected
+    task = asyncio.create_task(
         _run_and_store_scan(scan_id, payload.target, metadata)
     )
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
     
     logger.info(
         f"Scan started: {scan_id} for {payload.target}",
@@ -127,6 +133,33 @@ async def start_scan(
 
 # ==================== GET SCAN RESULTS ====================
 
+# Fix 10: Single helper to build the scan response — eliminates duplicated dict structure
+def _build_scan_response(scan) -> dict:
+    if scan.result and isinstance(scan.result, dict):
+        nmap = scan.result.get("nmap", {"status": "pending", "target": scan.target, "ports": [], "total_ports": 0})
+        nuclei = scan.result.get("nuclei", {"status": "pending", "target": scan.target, "vulnerabilities": [], "total_vulnerabilities": 0, "severity_distribution": {}})
+        summary = scan.result.get("summary", {"total_vulnerabilities": 0, "open_ports": 0, "severity_distribution": {}, "critical_count": 0, "high_count": 0})
+    else:
+        pending_status = "pending" if scan.status == ScanStatus.RUNNING.value else scan.status
+        nmap = {"status": pending_status, "target": scan.target, "ports": [], "total_ports": 0}
+        nuclei = {"status": pending_status, "target": scan.target, "vulnerabilities": [], "total_vulnerabilities": 0, "severity_distribution": {}}
+        summary = {"total_vulnerabilities": 0, "open_ports": 0, "severity_distribution": {}, "critical_count": 0, "high_count": 0}
+
+    return {
+        "scan_id": scan.scan_id,
+        "target": scan.target,
+        "status": scan.status,
+        "risk_score": scan.risk_score,
+        "duration": scan.duration,
+        "summary": summary,
+        "nmap": nmap,
+        "nuclei": nuclei,
+        "created_at": scan.created_at,
+        "updated_at": scan.updated_at,
+        "error": scan.error_message
+    }
+
+
 @router.get(
     "/results/{scan_id}",
     response_model=ScanResultResponse,
@@ -138,89 +171,21 @@ async def get_results(
 ):
     """
     Get scan results by scan ID.
-    
+
     - **scan_id**: UUID of the scan
-    
+
     Returns complete scan results including risk score and vulnerabilities.
     """
-    
-    # Sanitize scan_id
     try:
         scan_id = sanitize_scan_id(scan_id)
     except (ValueError, TargetValidationError) as e:
         raise HTTPException(status_code=400, detail="Invalid scan_id format")
-    
-    # Get scan from database
+
     scan = await get_scan(db, scan_id)
-    
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
-    
-    # Build response - handle running scans with no results yet
-    if scan.result and isinstance(scan.result, dict):
-        # Scan has completed with results
-        return {
-            "scan_id": scan.scan_id,
-            "target": scan.target,
-            "status": scan.status,
-            "risk_score": scan.risk_score,
-            "duration": scan.duration,
-            "summary": scan.result.get("summary", {
-                "total_vulnerabilities": 0,
-                "open_ports": 0,
-                "severity_distribution": {},
-                "critical_count": 0,
-                "high_count": 0
-            }),
-            "nmap": scan.result.get("nmap", {
-                "status": "pending",
-                "target": scan.target,
-                "ports": [],
-                "total_ports": 0
-            }),
-            "nuclei": scan.result.get("nuclei", {
-                "status": "pending",
-                "target": scan.target,
-                "vulnerabilities": [],
-                "total_vulnerabilities": 0,
-                "severity_distribution": {}
-            }),
-            "created_at": scan.created_at,
-            "updated_at": scan.updated_at,
-            "error": scan.error_message
-        }
-    else:
-        # Scan is still running or failed without results
-        return {
-            "scan_id": scan.scan_id,
-            "target": scan.target,
-            "status": scan.status,
-            "risk_score": scan.risk_score,
-            "duration": scan.duration,
-            "summary": {
-                "total_vulnerabilities": 0,
-                "open_ports": 0,
-                "severity_distribution": {},
-                "critical_count": 0,
-                "high_count": 0
-            },
-            "nmap": {
-                "status": "pending" if scan.status == ScanStatus.RUNNING.value else scan.status,
-                "target": scan.target,
-                "ports": [],
-                "total_ports": 0
-            },
-            "nuclei": {
-                "status": "pending" if scan.status == ScanStatus.RUNNING.value else scan.status,
-                "target": scan.target,
-                "vulnerabilities": [],
-                "total_vulnerabilities": 0,
-                "severity_distribution": {}
-            },
-            "created_at": scan.created_at,
-            "updated_at": scan.updated_at,
-            "error": scan.error_message
-        }
+
+    return _build_scan_response(scan)
 
 
 # ==================== SCAN HISTORY ====================
@@ -336,10 +301,12 @@ async def retry_scan(
     if not new_scan:
         raise HTTPException(status_code=500, detail="Failed to create retry scan")
     
-    # Start scan in background
-    asyncio.create_task(
+    # Fix 8: Track retry task reference too
+    task = asyncio.create_task(
         _run_and_store_scan(new_scan_id, original_scan.target, metadata)
     )
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
     
     logger.info(
         f"Retry scan started: {new_scan_id} (parent: {scan_id})",
@@ -385,21 +352,76 @@ async def delete_scan_endpoint(
 @router.post("/cleanup")
 async def cleanup_endpoint(
     days: int = Query(None, ge=1, description="Delete scans older than N days"),
+    secret: str = Query(..., description="Admin secret key (set CLEANUP_SECRET env var)"),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Cleanup old scan records.
-    
+
     - **days**: Delete scans older than this many days (default from config)
+    - **secret**: Must match the CLEANUP_SECRET environment variable
     """
-    
+    import os
+    expected_secret = os.getenv("CLEANUP_SECRET", "")
+    if not expected_secret:
+        raise HTTPException(
+            status_code=503,
+            detail="Cleanup endpoint is disabled: set the CLEANUP_SECRET environment variable to enable it"
+        )
+    if secret != expected_secret:
+        raise HTTPException(status_code=403, detail="Invalid secret")
+
     count = await cleanup_old_scans(db, days)
-    
+
     return {
-        "message": f"Cleanup completed",
+        "message": "Cleanup completed",
         "scans_deleted": count,
         "retention_days": days or settings.SCAN_RETENTION_DAYS
     }
+
+
+# ==================== CANCEL SCAN ====================
+
+# Fix 14: Track running tasks by scan_id so they can be cancelled
+_running_scan_tasks: dict = {}
+
+
+@router.post(
+    "/{scan_id}/cancel",
+    responses={404: {"model": ErrorResponse}, 400: {"model": ErrorResponse}}
+)
+async def cancel_scan(
+    scan_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Cancel a running scan.
+
+    - **scan_id**: UUID of the running scan
+    """
+    try:
+        scan_id = sanitize_scan_id(scan_id)
+    except (ValueError, TargetValidationError):
+        raise HTTPException(status_code=400, detail="Invalid scan_id format")
+
+    scan = await get_scan(db, scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    if scan.status != ScanStatus.RUNNING.value:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot cancel scan with status: {scan.status}"
+        )
+
+    # Cancel the background task if we have a reference
+    task = _running_scan_tasks.pop(scan_id, None)
+    if task and not task.done():
+        task.cancel()
+
+    await mark_scan_failed(db, scan_id, "Cancelled by user", status=ScanStatus.FAILED.value)
+
+    return {"message": "Scan cancelled", "scan_id": scan_id}
 
 
 # ==================== QUEUE INFO ====================
@@ -430,6 +452,11 @@ async def _run_and_store_scan(scan_id: str, target: str, metadata: dict):
                 f"Background scan executing: {scan_id}",
                 extra={"scan_id": scan_id, "target": target}
             )
+
+            # Fix 14: Register this task so it can be cancelled via the cancel endpoint
+            current_task = asyncio.current_task()
+            if current_task:
+                _running_scan_tasks[scan_id] = current_task
             
             # Run the full scan
             result = await run_full_scan(target, metadata, parallel=True)
@@ -457,6 +484,10 @@ async def _run_and_store_scan(scan_id: str, target: str, metadata: dict):
                     status=final_status
                 )
         
+        except asyncio.CancelledError:
+            logger.info(f"Scan cancelled: {scan_id}")
+            await mark_scan_failed(db, scan_id, "Cancelled by user", status=ScanStatus.FAILED.value)
+
         except Exception as e:
             logger.exception(f"Background scan failed: {scan_id}")
             await mark_scan_failed(
@@ -465,3 +496,7 @@ async def _run_and_store_scan(scan_id: str, target: str, metadata: dict):
                 error=str(e),
                 status=ScanStatus.FAILED.value
             )
+
+        finally:
+            # Fix 14: Always clean up task reference
+            _running_scan_tasks.pop(scan_id, None)
