@@ -61,7 +61,7 @@ export function Layout({ children }: LayoutProps) {
                             <div className="text-xs text-gray-400 mb-1">Scan Queue</div>
                             <div className="flex items-center justify-between">
                                 <span className="text-sm font-medium">
-                                    {queueInfo.active_scans} / {queueInfo.max_concurrent_scans}
+                                    {queueInfo.scans_running} / {queueInfo.max_concurrent_scans}
                                 </span>
                                 <span className="text-xs text-gray-400">active</span>
                             </div>
