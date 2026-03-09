@@ -57,7 +57,7 @@ graph LR
 - **🛡️ Security Scanning**: Nmap & Nuclei integration with AI risk scoring
 - **🖥️ Modern Dashboard**: Real-time progress, interactive charts, dark mode
 - **⚙️ Reliability**: Async-first design, rate limiting, health checks
-- **🔒 Security**: Input validation, CORS protection, private IP blocking
+- **🔒 Security**: Input validation, CORS protection and also private IP blocking
 
 ---
 
