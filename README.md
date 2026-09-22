@@ -512,6 +512,27 @@ docker compose up -d --build
 
 ---
 
+## 💻 Frontend Tour & Mobile Responsiveness
+
+The XenoraSec frontend is built with React 18, TypeScript, and Tailwind CSS to deliver an ultra-fast, responsive security operations dashboard:
+
+### 1. Mobile-First Adaptive Interface
+- **Responsive Drawer Navigation**: On smartphones and tablets, the 256px sidebar cleanly collapses into a sliding drawer accessible via the top navigation hamburger button, with an animated backdrop overlay.
+- **Dynamic Content Flow**: Prevents horizontal overflow on smaller screens while keeping complex data tables (ports, CVSS metrics) fully scrollable.
+
+### 2. Intelligent Target Specification
+- **Format Recognition Badges**: Dynamically identifies whether the input is an **IPv4 Address**, **Domain Host**, **Web URL**, or **Localhost** as you type.
+- **Proactive Input Linting**: Validates IP octets (0-255) and domain boundaries in real time, showing immediate contextual feedback prior to network dispatch.
+- **One-Click Test Presets**: Quick-fill buttons for fast testing and demonstrations (`scanme.nmap.org`, `https://example.com`).
+
+### 3. Interactive Scan Findings & Intelligence
+- **Real-Time Polling**: TanStack Query automatically polls for background scan progress with smart backoff.
+- **Multi-Dimensional Severity Filtering**: Filter findings instantly by severity level (Critical, High, Medium, Low, Info) or full-text query.
+- **Deep Vulnerability Inspection**: Click any finding to inspect its matching template ID, CVSS score, CWE tags, matched path, and official external vulnerability references.
+- **One-Click Partial & Failed Scan Retry**: Easily relaunch interrupted or partial scans directly from the action bar.
+
+---
+
 ## 📚 Documentation & API
 
 - **API Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
