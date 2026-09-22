@@ -38,15 +38,16 @@
 
 ---
 
-##  Overview
+## 🔍 Overview
 
-XenoraSec orchestrates **Nmap** and **Nuclei** for comprehensive security scanning, using AI risk analysis to provide intelligent scoring.
+**XenoraSec** is an enterprise-grade, open-source vulnerability scanning and attack surface management platform designed for security engineers, penetration testers, and DevSecOps teams. It unites industry-standard recon and vulnerability detection tools into an automated, highly concurrent, asynchronous workflow accompanied by a responsive cyber-defense dashboard.
 
-### 🛠️ Tech Stack
-- **Backend**: FastAPI, SQLAlchemy (Async), Pydantic, Uvicorn
-- **Frontend**: React, TypeScript, Vite, Tailwind CSS, TanStack Query
-- **Security Tools**: Nmap, Nuclei
-- **Database**: SQLite (Dev) / PostgreSQL (Prod)
+Traditional security scanners either overwhelm security teams with disconnected raw CLI outputs or trap them behind monolithic, slow, blocking web frameworks. XenoraSec solves this by introducing:
+
+1. **Non-Blocking Dual-Engine Orchestration**: Executes network-layer recon (**Nmap**) and template-driven vulnerability assessments (**Nuclei**) concurrently via non-blocking asyncio subprocesses with real-time stream processing.
+2. **Hybrid Risk Intelligence**: Fuses a deterministic **Michaelis-Menten saturation model** (ensuring mathematically bounded, reproducible risk prioritization) with optional real-time **Groq Cloud LLM** contextual analysis.
+3. **Zero-Trust Input & Network Defense**: Native safeguards against SSRF, loopback bypasses, DNS rebinding, reverse proxy header spoofing, and rogue scans.
+4. **Reliable SQLite WAL / Postgres Concurrency**: Engineered for heavy polling and multi-scan execution without database lockups or zombie process leakage.
 
 ### 🏗️ Architecture
 ```mermaid
