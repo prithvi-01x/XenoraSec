@@ -91,7 +91,7 @@ export function ScanResultsPage() {
                             {cancelScan.isPending ? 'Cancelling...' : 'Cancel'}
                         </button>
                     )}
-                    {(scan.status === 'failed' || scan.status === 'timeout') && (
+                    {(scan.status === 'failed' || scan.status === 'timeout' || scan.status === 'partial') && (
                         <button
                             onClick={handleRetry}
                             disabled={retryScan.isPending}

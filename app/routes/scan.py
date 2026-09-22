@@ -271,11 +271,11 @@ async def retry_scan(
     if not original_scan:
         raise HTTPException(status_code=404, detail="Original scan not found")
     
-    # Only allow retry for failed scans
-    if original_scan.status not in [ScanStatus.FAILED.value, ScanStatus.TIMEOUT.value]:
+    # Only allow retry for failed, timeout, or partial scans
+    if original_scan.status not in [ScanStatus.FAILED.value, ScanStatus.TIMEOUT.value, ScanStatus.PARTIAL.value]:
         raise HTTPException(
             status_code=400,
-            detail=f"Can only retry failed or timeout scans. Current status: {original_scan.status}"
+            detail=f"Can only retry failed, timeout, or partial scans. Current status: {original_scan.status}"
         )
     
     # Check queue availability
