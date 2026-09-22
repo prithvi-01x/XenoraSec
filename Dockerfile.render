@@ -1,28 +1,30 @@
 FROM python:3.11-slim
 
-# install system deps
-RUN apt-get update && apt-get install -y \
+# Install system dependencies (nmap, wget, unzip, ca-certificates)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     nmap \
     wget \
     unzip \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# install modern Go manually (NOT apt)
-RUN wget https://go.dev/dl/go1.22.5.linux-amd64.tar.gz && \
-    tar -C /usr/local -xzf go1.22.5.linux-amd64.tar.gz && \
-    rm go1.22.5.linux-amd64.tar.gz
-
-ENV PATH="/usr/local/go/bin:${PATH}"
-
-# install nuclei
-RUN go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@v3.7.0 && \
-    mv /root/go/bin/nuclei /usr/local/bin/ && \
-    nuclei -update-templates
+# Install precompiled Nuclei binary directly from GitHub releases
+# Eliminates heavy Go compilation that exhausts memory on free hosting tiers
+ARG NUCLEI_VERSION=3.3.8
+RUN wget -q "https://github.com/projectdiscovery/nuclei/releases/download/v${NUCLEI_VERSION}/nuclei_${NUCLEI_VERSION}_linux_amd64.zip" \
+    && unzip -q "nuclei_${NUCLEI_VERSION}_linux_amd64.zip" nuclei -d /usr/local/bin/ \
+    && rm "nuclei_${NUCLEI_VERSION}_linux_amd64.zip" \
+    && chmod +x /usr/local/bin/nuclei \
+    && nuclei -update-templates || true
 
 WORKDIR /app
-COPY . .
 
+# Install Python dependencies first for efficient layer caching
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "10000"]
+# Copy application code
+COPY . .
 
+EXPOSE 10000
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "10000"]

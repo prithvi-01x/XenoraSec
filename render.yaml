@@ -6,6 +6,7 @@ services:
     plan: free
     region: oregon
     dockerfilePath: ./Dockerfile.render
+    healthCheckPath: /health
     autoDeploy: true
 
     envVars:
@@ -18,24 +19,29 @@ services:
       - key: ALLOW_PRIVATE_IP_SCANNING
         value: false
       - key: GLOBAL_SCAN_TIMEOUT
-        value: 180
+        value: 600
       - key: NMAP_TIMEOUT
-        value: 120
+        value: 180
       - key: NUCLEI_TIMEOUT
-        value: 120
-      - key: MAX_TARGETS_PER_SCAN
-        value: 1
-      - key: NMAP_MAX_PORTS
-        value: 1000
+        value: 300
+      - key: MAX_CONCURRENT_SCANS
+        value: 3
+      - key: RATE_LIMIT_ENABLED
+        value: true
+      - key: RATE_LIMIT_PER_MINUTE
+        value: 10
+      - key: TRUST_PROXY_HEADERS
+        value: true
       - key: ALLOWED_ORIGINS
         value: https://xenorasec-frontend.onrender.com,http://localhost:5173
       - key: PYTHONUNBUFFERED
         value: 1
 
-  # Frontend
+  # Frontend (Static Site)
   - type: web
     name: xenorasec-frontend
     env: static
+    plan: free
     buildCommand: cd frontend && npm install && npm run build
     staticPublishPath: ./frontend/dist
     routes:

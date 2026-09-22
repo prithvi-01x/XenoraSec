@@ -15,6 +15,7 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/health", tags=["Health"])
 
 
+@router.get("", include_in_schema=False)
 @router.get("/")
 async def health_check(db: AsyncSession = Depends(get_db)):
     """
