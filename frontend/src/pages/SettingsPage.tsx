@@ -108,13 +108,15 @@ export function SettingsPage() {
                         </thead>
                         <tbody className="text-gray-300">
                             {[
-                                ['NMAP_TIMEOUT', 'Nmap phase timeout (seconds)', '300'],
-                                ['NUCLEI_TIMEOUT', 'Nuclei phase timeout (seconds)', '480'],
+                                ['NMAP_TIMEOUT', 'Nmap phase timeout (seconds)', '180'],
+                                ['NUCLEI_TIMEOUT', 'Nuclei phase timeout (seconds)', '300'],
                                 ['GLOBAL_SCAN_TIMEOUT', 'Hard limit for entire scan (seconds)', '600'],
                                 ['MAX_CONCURRENT_SCANS', 'Max simultaneous scans', '3'],
                                 ['RATE_LIMIT_PER_MINUTE', 'API requests per minute per IP', '10'],
+                                ['TRUST_PROXY_HEADERS', 'Honor reverse proxy X-Forwarded-For headers', 'false'],
                                 ['ALLOW_PRIVATE_IP_SCANNING', 'Allow scanning private IPs', 'false'],
                                 ['ALLOW_LOCALHOST_SCANNING', 'Allow scanning localhost', 'false'],
+                                ['GROQ_API_KEY', 'Groq Cloud LLM API key for AI risk scoring', 'unset (heuristic)'],
                                 ['CLEANUP_SECRET', 'Secret to enable /cleanup endpoint', 'unset (disabled)'],
                             ].map(([key, desc, def]) => (
                                 <tr key={key} className="border-b border-gray-700/50">
