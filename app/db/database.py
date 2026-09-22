@@ -1,5 +1,6 @@
 # app/db/database.py
 
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.pool import NullPool, QueuePool
@@ -17,11 +18,14 @@ engine_kwargs = {
     "future": True,
 }
 
-# SQLite-specific configuration
+# SQLite-specific configuration with concurrency hardening
 if IS_SQLITE:
     engine_kwargs.update({
-        "connect_args": {"check_same_thread": False},
-        "poolclass": NullPool,  # SQLite doesn't benefit from pooling
+        "connect_args": {
+            "check_same_thread": False,
+            "timeout": 30.0,  # 30s connection acquisition timeout to prevent "database is locked"
+        },
+        "poolclass": NullPool,  # SQLite with aiosqlite works best with fresh connections per task
     })
 else:
     # Postgres/other DB configuration
@@ -34,6 +38,19 @@ else:
 
 # Create async engine
 engine = create_async_engine(settings.DATABASE_URL, **engine_kwargs)
+
+# Concurrency tuning for SQLite: Enable WAL mode, synchronous=NORMAL, and busy timeout
+if IS_SQLITE:
+    @event.listens_for(engine.sync_engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        try:
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.execute("PRAGMA busy_timeout=30000")  # 30,000ms (30s) busy handler
+            cursor.close()
+        except Exception as e:
+            logger.debug(f"Failed to set SQLite concurrency PRAGMAs: {e}")
 
 # Session factory
 AsyncSessionLocal = async_sessionmaker(
