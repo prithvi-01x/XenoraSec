@@ -218,6 +218,45 @@ Naively trusting `X-Forwarded-For` allows attackers to bypass rate limits by rot
 
 ---
 
+## 🗄️ Database Architecture & Concurrency
+
+XenoraSec supports both development SQLite and enterprise-scale PostgreSQL via SQLAlchemy 2.0 async sessions:
+
+```mermaid
+erDiagram
+    SCAN_RESULT {
+        string scan_id PK "UUIDv4 identifier"
+        string target "Validated hostname or IP"
+        string status "running | completed | failed | timeout | partial"
+        float risk_score "0.0 - 10.0 score"
+        json result "Raw Nmap and Nuclei payloads"
+        string error_message "Failure or partial cause"
+        float duration "Total execution seconds"
+        string parent_scan_id FK "Original scan if retried"
+        datetime created_at "ISO UTC timestamp"
+        datetime updated_at "ISO UTC timestamp"
+    }
+```
+
+### 1. SQLite High-Concurrency Tuning
+By default, SQLite locks the entire database file during writes, which causes `sqlite3.OperationalError: database is locked` during concurrent scanning and frequent frontend UI polling. XenoraSec eliminates this via:
+- **Write-Ahead Logging (WAL)**: `PRAGMA journal_mode=WAL` allows multiple concurrent readers to query scan progress while a background worker writes scan updates.
+- **Synchronous Normal**: `PRAGMA synchronous=NORMAL` reduces disk fsync overhead while maintaining ACID consistency across crashes.
+- **30-Second Busy Handler**: `PRAGMA busy_timeout=30000` instructs SQLite to wait up to 30 seconds for lock release rather than immediately throwing an exception.
+- **Connection Acquisition Timeout**: Engine configured with `connect_args={"timeout": 30.0, "check_same_thread": False}` and `NullPool` for clean task-scoped connections.
+
+### 2. Enterprise PostgreSQL Migration
+For multi-node deployments or high-volume enterprise scanning, switch to PostgreSQL with `asyncpg` by updating `.env`:
+
+```env
+DATABASE_URL="postgresql+asyncpg://xenora_user:secure_password@postgres.internal:5432/xenorasec"
+DB_POOL_SIZE=10
+DB_MAX_OVERFLOW=20
+```
+When a PostgreSQL connection string is detected, XenoraSec automatically activates SQLAlchemy `QueuePool` with active pre-ping health checks.
+
+---
+
 ## 📸 Screenshots
 
 ### Dashboard - Scan Progress
