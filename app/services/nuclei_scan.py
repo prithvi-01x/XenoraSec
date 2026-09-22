@@ -78,20 +78,39 @@ class NucleiScanner:
         buffer = ""
         line_count = 0
         error_count = 0
+        timed_out = False
         start_time = asyncio.get_event_loop().time()
         
+        # Concurrently read stderr to prevent OS pipe buffer deadlocks (64KB on Linux)
+        stderr_task = asyncio.create_task(process.stderr.read()) if process.stderr else None
+
         try:
             while True:
                 # Check global timeout
                 elapsed = asyncio.get_event_loop().time() - start_time
-                if elapsed > self.timeout:
+                if elapsed >= self.timeout:
                     logger.warning(f"Nuclei timeout reached: {elapsed}s")
-                    process.kill()
-                    await process.wait()
+                    timed_out = True
+                    if process.returncode is None:
+                        process.kill()
+                        await process.wait()
                     break
                 
-                # Read chunk
-                chunk = await process.stdout.read(self.chunk_size)
+                # Read chunk bounded by remaining timeout
+                remaining_time = max(0.01, self.timeout - elapsed)
+                try:
+                    chunk = await asyncio.wait_for(
+                        process.stdout.read(self.chunk_size),
+                        timeout=remaining_time
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(f"Nuclei timeout reached during read: {self.timeout}s")
+                    timed_out = True
+                    if process.returncode is None:
+                        process.kill()
+                        await process.wait()
+                    break
+
                 if not chunk:
                     break
                 
@@ -128,19 +147,25 @@ class NucleiScanner:
                         logger.warning(
                             f"Reached max vulnerability limit ({self.max_vulnerabilities}), stopping scan"
                         )
-                        process.kill()
-                        await process.wait()
+                        if process.returncode is None:
+                            process.kill()
+                            await process.wait()
                         break
                 
                 # Break if we hit the vulnerability cap
                 if len(vulnerabilities) >= self.max_vulnerabilities:
                     break
             
-            # Wait for process to finish
-            await process.wait()
+            # Wait for process to finish if not already terminated
+            if process.returncode is None:
+                await process.wait()
+            stderr_bytes = await stderr_task if stderr_task else b""
+            stderr_output = stderr_bytes.decode("utf-8", errors="replace").strip() if stderr_bytes else ""
         
         except asyncio.CancelledError:
             logger.warning(f"Nuclei scan cancelled for {target}")
+            if stderr_task and not stderr_task.done():
+                stderr_task.cancel()
             if process and process.returncode is None:
                 try:
                     process.kill()
@@ -151,6 +176,8 @@ class NucleiScanner:
 
         except Exception as e:
             logger.exception(f"Nuclei runtime error: {e}")
+            if stderr_task and not stderr_task.done():
+                stderr_task.cancel()
             if process and process.returncode is None:
                 try:
                     process.kill()
@@ -168,6 +195,8 @@ class NucleiScanner:
             }
         
         finally:
+            if stderr_task and not stderr_task.done():
+                stderr_task.cancel()
             if process and process.returncode is None:
                 try:
                     process.kill()
@@ -176,6 +205,50 @@ class NucleiScanner:
                     pass
         
         # Determine final status
+        if timed_out:
+            logger.warning(f"Nuclei scan timed out for {target}")
+            return {
+                "status": ScanStatus.TIMEOUT.value,
+                "error": f"Nuclei scan timed out after {self.timeout}s",
+                "target": target,
+                "vulnerabilities": vulnerabilities,
+                "total_vulnerabilities": len(vulnerabilities),
+                "severity_distribution": self._severity_dist(vulnerabilities),
+                "scan_stats": {
+                    "lines_processed": line_count,
+                    "parse_errors": error_count,
+                    "duration": round(asyncio.get_event_loop().time() - start_time, 2)
+                }
+            }
+
+        # Check if process crashed or failed
+        if process.returncode is not None and process.returncode != 0:
+            error_msg = stderr_output or f"Nuclei exited with code {process.returncode}"
+            logger.error(f"Nuclei failed for {target}: {error_msg}")
+            if not vulnerabilities:
+                return {
+                    "status": ScanStatus.FAILED.value,
+                    "error": error_msg,
+                    "target": target,
+                    "vulnerabilities": [],
+                    "total_vulnerabilities": 0,
+                    "severity_distribution": {}
+                }
+            else:
+                return {
+                    "status": ScanStatus.PARTIAL.value,
+                    "error": error_msg,
+                    "target": target,
+                    "vulnerabilities": vulnerabilities,
+                    "total_vulnerabilities": len(vulnerabilities),
+                    "severity_distribution": self._severity_dist(vulnerabilities),
+                    "scan_stats": {
+                        "lines_processed": line_count,
+                        "parse_errors": error_count,
+                        "duration": round(asyncio.get_event_loop().time() - start_time, 2)
+                    }
+                }
+
         status = ScanStatus.COMPLETED.value
         if line_count > 0 and error_count > line_count * ERROR_RATE_THRESHOLD:
             status = ScanStatus.PARTIAL.value
