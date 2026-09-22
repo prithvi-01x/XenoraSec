@@ -533,6 +533,47 @@ The XenoraSec frontend is built with React 18, TypeScript, and Tailwind CSS to d
 
 ---
 
+## 🧪 Testing & Quality Assurance
+
+XenoraSec maintains a rigorous automated test suite covering security controls, mathematical modeling, and concurrent operations:
+
+### Backend Test Suite (Pytest)
+
+The test suite includes 25+ automated unit and integration tests:
+
+```bash
+# Run all tests with verbose output
+pytest -v
+
+# Run a specific test module
+pytest tests/test_security.py
+pytest tests/test_ai_service.py
+```
+
+#### Test Coverage Matrix
+
+| Test Module | Focus Area | Key Invariants Verified |
+| :--- | :--- | :--- |
+| **`test_security.py`** | SSRF & Input Gate | Validates loopback blocking, DNS resolution, private IP rejection, and domain regex |
+| **`test_rate_limit.py`** | Anti-Spoofing | Verifies proxy header gating, trusted peer checks, and sliding-window limits |
+| **`test_cancellation.py`** | Subprocess Safety | Ensures `process.kill()` executes on `asyncio.CancelledError` |
+| **`test_ai_service.py`** | Risk Scoring | Proves Michaelis-Menten half-saturation point ($S=15 \implies 5.0$) & Groq fallback |
+| **`test_database.py`** | DB Concurrency | Checks WAL mode, 30s busy timeout, and concurrent multi-session execution |
+| **`test_api.py`** | REST API Endpoints | End-to-end route tests for `/health`, `/queue`, `/history`, and partial retries |
+
+### Frontend Build & Type Verification
+
+```bash
+cd frontend
+# TypeScript compilation & production build
+npm run build
+
+# Run ESLint quality checks
+npm run lint
+```
+
+---
+
 ## 📚 Documentation & API
 
 - **API Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
