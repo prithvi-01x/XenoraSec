@@ -327,6 +327,35 @@ curl -X POST "http://localhost:8000/api/scan/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6
 
 ---
 
+## ⚙️ Environment Configuration
+
+All settings in XenoraSec can be configured via environment variables or specified inside a `.env` file in the project root:
+
+| Variable | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| **`APP_NAME`** | `string` | `"XenoraSec"` | Branding identifier |
+| **`DEBUG`** | `boolean` | `false` | Verbose FastAPI debug logs |
+| **`DATABASE_URL`** | `string` | `sqlite+aiosqlite:///./scans.db` | SQLite or PostgreSQL URI |
+| **`MAX_CONCURRENT_SCANS`** | `integer` | `3` | Maximum simultaneous active scans |
+| **`GLOBAL_SCAN_TIMEOUT`** | `integer` | `600` | Hard timeout (seconds) per scan |
+| **`NMAP_TIMEOUT`** | `integer` | `180` | Maximum seconds for Nmap phase |
+| **`NMAP_TIMING`** | `string` | `"T4"` | Nmap timing template (`T1`-`T5`) |
+| **`NUCLEI_TIMEOUT`** | `integer` | `300` | Maximum seconds for Nuclei phase |
+| **`NUCLEI_RATE_LIMIT`** | `integer` | `50` | Nuclei HTTP requests per second |
+| **`MAX_VULNERABILITIES`**| `integer` | `1000` | Safety limit to prevent memory bloat |
+| **`ALLOW_LOCALHOST_SCANNING`**| `boolean` | `false` | Enable/disable scanning 127.0.0.1 |
+| **`ALLOW_PRIVATE_IP_SCANNING`**| `boolean` | `false` | Enable/disable RFC 1918 subnets |
+| **`RATE_LIMIT_ENABLED`** | `boolean` | `true` | Enable client IP rate limiting |
+| **`RATE_LIMIT_PER_MINUTE`**| `integer` | `10` | Requests allowed per minute per IP |
+| **`RATE_LIMIT_PER_HOUR`**| `integer` | `100` | Requests allowed per hour per IP |
+| **`TRUST_PROXY_HEADERS`**| `boolean` | `false` | Enable when behind reverse proxies |
+| **`ALLOWED_ORIGINS`** | `string` | `http://localhost:5173,...` | Allowed CORS origins (comma separated)|
+| **`GROQ_API_KEY`** | `string` | `null` | Groq Cloud API key for Llama 3.3 LLM |
+| **`GROQ_MODEL`** | `string` | `"llama-3.3-70b-versatile"` | Target Groq model identifier |
+| **`CLEANUP_SECRET`** | `string` | `null` | Required secret for `/api/scan/cleanup`|
+
+---
+
 ## 📸 Screenshots
 
 ### Dashboard - Scan Progress
