@@ -379,32 +379,72 @@ All settings in XenoraSec can be configured via environment variables or specifi
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Installation & Local Development Setup
 
-**Prerequisites**: Python 3.10+, Node.js 18+, Nmap, Nuclei.
+### System Prerequisites
+Ensure the underlying security scanning binaries are installed on your host system:
 
+#### 1. Install Nmap & Nuclei
+- **Ubuntu / Debian**:
+  ```bash
+  sudo apt-get update && sudo apt-get install -y nmap wget unzip
+  # Download precompiled Nuclei binary
+  wget https://github.com/projectdiscovery/nuclei/releases/download/v3.3.8/nuclei_3.3.8_linux_amd64.zip
+  unzip nuclei_3.3.8_linux_amd64.zip
+  sudo mv nuclei /usr/local/bin/
+  rm nuclei_3.3.8_linux_amd64.zip
+  nuclei -update-templates
+  ```
+
+- **macOS (Homebrew)**:
+  ```bash
+  brew install nmap nuclei
+  nuclei -update-templates
+  ```
+
+- **Arch Linux**:
+  ```bash
+  sudo pacman -S nmap nuclei
+  nuclei -update-templates
+  ```
+
+---
+
+### Step-by-Step Setup
+
+#### 1. Clone the Repository
 ```bash
-# 1. Clone & Setup
 git clone https://github.com/prithvi-01x/XenoraSec.git
-cd xenorasec
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-
-# 2. Setup Frontend
-cd frontend && npm install && cd ..
-
-# 3. Configure
-cp .env.example .env
-
-# 4. Run
-# Terminal 1: Backend
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-# Terminal 2: Frontend
-cd frontend && npm run dev
+cd XenoraSec
 ```
 
-Visit **http://localhost:5173** to start scanning.
-Detailed guide: **[QUICKSTART.md](QUICKSTART.md)**.
+#### 2. Configure Environment Variables
+```bash
+cp .env.example .env
+# Edit .env with your favorite editor to configure database and optional Groq API key
+nano .env
+```
+
+#### 3. Backend Setup
+```bash
+# Using standard Python venv
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Start the FastAPI server on port 8000
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+#### 4. Frontend Setup
+In a new terminal:
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Visit **[http://localhost:5173](http://localhost:5173)** in your browser. The frontend will automatically connect to the backend running at `http://localhost:8000`.
 
 ---
 
