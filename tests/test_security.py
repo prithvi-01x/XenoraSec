@@ -74,3 +74,38 @@ def test_valid_public_domain(monkeypatch):
     assert is_valid is True
     assert meta["hostname"] == "example.com"
     assert "93.184.216.34" in meta["resolved_ips"]
+
+
+def test_uppercase_url_scheme(monkeypatch):
+    from app.core.security import prepare_nmap_target, prepare_nuclei_target
+    monkeypatch.setattr("app.core.security.resolve_hostname_ips", lambda h: ["93.184.216.34"])
+
+    is_valid, err, meta = validate_target("HTTP://example.com", allow_private=False, allow_localhost=False)
+    assert is_valid is True
+    assert meta["hostname"] == "example.com"
+    assert meta["scheme"] == "http"
+    assert prepare_nmap_target("HTTP://example.com", meta) == "example.com"
+    assert prepare_nuclei_target("HTTP://example.com", meta) == "http://example.com"
+
+
+def test_url_with_custom_port_and_path(monkeypatch):
+    from app.core.security import prepare_nuclei_target, prepare_nmap_target
+    monkeypatch.setattr("app.core.security.resolve_hostname_ips", lambda h: ["93.184.216.34"])
+
+    target = "https://example.com:8443/api/v1"
+    is_valid, err, meta = validate_target(target, allow_private=False, allow_localhost=False)
+    assert is_valid is True
+    assert meta["hostname"] == "example.com"
+    assert prepare_nmap_target(target, meta) == "example.com"
+    assert prepare_nuclei_target(target, meta) == "https://example.com:8443/api/v1"
+
+
+def test_bracketed_ipv6_loopback():
+    is_valid, err, meta = validate_target("[::1]", allow_localhost=False)
+    assert is_valid is False
+    assert "localhost is not allowed" in err
+
+    is_valid, err, meta = validate_target("[::1]", allow_localhost=True)
+    assert is_valid is True
+    assert meta["hostname"] == "::1"
+

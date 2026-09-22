@@ -67,11 +67,19 @@ def extract_hostname(target: str) -> Tuple[str, Optional[str]]:
     """
     target = target.strip()
     
-    # If it starts with http:// or https://, parse as URL
-    if target.startswith(("http://", "https://")):
+    # If it starts with http:// or https:// (case-insensitive), parse as URL
+    if target.lower().startswith(("http://", "https://")):
         parsed = urlparse(target)
-        return parsed.hostname or parsed.netloc, parsed.scheme
+        host = parsed.hostname or parsed.netloc
+        if host and host.startswith("[") and host.endswith("]"):
+            host = host[1:-1]
+        return host, parsed.scheme.lower()
     
+    # Handle bare bracketed IPv6 (e.g. [::1])
+    if target.startswith("[") and "]" in target:
+        end_idx = target.find("]")
+        return target[1:end_idx], None
+
     # Otherwise treat as hostname/IP
     return target, None
 
@@ -87,7 +95,7 @@ def validate_target(
     
     Returns:
         (is_valid, error_message, metadata)
-        metadata: {"hostname": str, "scheme": str, "is_ip": bool, "is_private": bool, "resolved_ips": List[str]}
+        metadata: {"hostname": str, "scheme": str, "netloc": str, "path": str, "is_ip": bool, "is_private": bool, "resolved_ips": List[str]}
     """
     
     # Use provided overrides or global settings
@@ -111,9 +119,18 @@ def validate_target(
     
     hostname_clean = hostname.strip().lower()
     
+    netloc = None
+    url_path = None
+    if target.lower().startswith(("http://", "https://")):
+        parsed_url = urlparse(target)
+        netloc = parsed_url.netloc
+        url_path = parsed_url.path
+
     metadata = {
         "hostname": hostname,
         "scheme": scheme,
+        "netloc": netloc,
+        "path": url_path,
         "is_ip": False,
         "is_private": False,
         "resolved_ips": [],
@@ -245,14 +262,17 @@ def prepare_nmap_target(target: str, metadata: dict) -> str:
 def prepare_nuclei_target(target: str, metadata: dict) -> str:
     """
     Prepare target for Nuclei (ensure URL format).
-    Nuclei requires full URLs with scheme.
+    Nuclei requires full URLs with scheme, preserving custom ports and paths.
     """
     hostname = metadata.get("hostname", target)
     scheme = metadata.get("scheme")
+    netloc = metadata.get("netloc")
+    path = metadata.get("path") or ""
     
-    # If original had a scheme, use it
+    # If original had a scheme, use it with netloc (preserving port) and path
     if scheme:
-        return f"{scheme}://{hostname}"
+        host_target = netloc if netloc else hostname
+        return f"{scheme}://{host_target}{path}"
     
     # Otherwise default to http://
     return f"http://{hostname}"
