@@ -1,6 +1,6 @@
 # app/schemas/scan.py
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
@@ -59,8 +59,9 @@ class ScanCreateRequest(BaseModel):
     scan_mode: Optional[str] = "quick"
     options: Optional[ScanOptions] = None
 
-    @validator("target")
-    def validate_target_format(cls, v):
+    @field_validator("target")
+    @classmethod
+    def validate_target_format(cls, v: str) -> str:
         if not v or not v.strip():
             raise ValueError("Target cannot be empty")
         return v.strip()
@@ -80,8 +81,8 @@ class ScanCreateResponse(BaseModel):
     status: ScanStatus
     message: str = "Scan started successfully"
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "scan_id": "550e8400-e29b-41d4-a716-446655440000",
                 "target": "example.com",
@@ -89,6 +90,7 @@ class ScanCreateResponse(BaseModel):
                 "message": "Scan started successfully"
             }
         }
+    )
 
 
 class PortInfo(BaseModel):
@@ -111,11 +113,12 @@ class VulnerabilityInfo(BaseModel):
     references: Optional[List[str]] = None
     tags: Optional[List[str]] = None
 
-    @validator('cve', 'cwe', pre=True)
+    @field_validator('cve', 'cwe', mode='before')
+    @classmethod
     def convert_list_to_string(cls, v):
         """Convert list values to comma-separated strings (Nuclei returns lists)"""
         if isinstance(v, list):
-            return ', '.join(v) if v else None
+            return ', '.join(str(x) for x in v) if v else None
         return v
 
 
@@ -159,9 +162,9 @@ class ScanResultResponse(BaseModel):
     updated_at: datetime
     error: Optional[str] = None
 
-    class Config:
-        from_attributes = True
-        json_schema_extra = {
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
             "example": {
                 "scan_id": "550e8400-e29b-41d4-a716-446655440000",
                 "target": "example.com",
@@ -196,6 +199,7 @@ class ScanResultResponse(BaseModel):
                 "updated_at": "2024-01-01T12:01:00Z"
             }
         }
+    )
 
 
 class ScanHistoryItem(BaseModel):
@@ -207,8 +211,7 @@ class ScanHistoryItem(BaseModel):
     updated_at: datetime
     duration: Optional[float] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ScanHistoryResponse(BaseModel):
@@ -217,8 +220,8 @@ class ScanHistoryResponse(BaseModel):
     limit: int
     offset: int
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "items": [
                     {
@@ -235,6 +238,7 @@ class ScanHistoryResponse(BaseModel):
                 "offset": 0
             }
         }
+    )
 
 
 class HealthResponse(BaseModel):
@@ -243,8 +247,8 @@ class HealthResponse(BaseModel):
     timestamp: datetime
     database: str = "connected"
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "status": "ok",
                 "version": "2.0.0",
@@ -252,16 +256,18 @@ class HealthResponse(BaseModel):
                 "database": "connected"
             }
         }
+    )
 
 
 class ErrorResponse(BaseModel):
     detail: str
     error_code: Optional[str] = None
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "detail": "Scan not found",
                 "error_code": "SCAN_NOT_FOUND"
             }
         }
+    )
