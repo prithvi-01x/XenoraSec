@@ -49,16 +49,90 @@ Traditional security scanners either overwhelm security teams with disconnected 
 3. **Zero-Trust Input & Network Defense**: Native safeguards against SSRF, loopback bypasses, DNS rebinding, reverse proxy header spoofing, and rogue scans.
 4. **Reliable SQLite WAL / Postgres Concurrency**: Engineered for heavy polling and multi-scan execution without database lockups or zombie process leakage.
 
-### 🏗️ Architecture
+### 🏗️ Architecture & Pipeline
 ```mermaid
-graph LR
-    U[User] --> F[React Frontend]
-    F <-->|REST API| B[FastAPI Backend]
-    B -->|Schema| D[(Database)]
-    B -->|Async| S{Scanners}
-    S --> N[Nmap]
-    S --> V[Nuclei]
-    S --> A[AI Risk Analysis]
+flowchart TB
+    subgraph Client ["Client Layer (Browser & Mobile)"]
+        UI["React 18 + Vite SPA"]
+        TQ["TanStack Query (Auto-Polling & Cache)"]
+        UI <--> TQ
+    end
+
+    subgraph SecurityGate ["Security & Ingress Gate"]
+        RL["Sliding-Window Rate Limiter\n(Proxy Header Validation)"]
+        VAL["Target Sanitizer & DNS Resolver\n(SSRF / Rebinding Guard)"]
+        SEM["Concurrency Slot Governor\n(MAX_CONCURRENT_SCANS)"]
+    end
+
+    subgraph Core ["FastAPI Asynchronous Backend"]
+        ROUTER["REST API Routes\n(/api/scan, /health)"]
+        TASK["Background Task Worker\n(_run_and_store_scan)"]
+    end
+
+    subgraph Engines ["Dual Security Execution Engines"]
+        NMAP["Nmap Engine\n(-sT -sV -Pn XML Stream)"]
+        NUCLEI["Nuclei Engine\n(JSONL Chunk Stream & Buffer Cap)"]
+    end
+
+    subgraph Analysis ["AI Risk Analysis Engine"]
+        HEUR["Michaelis-Menten\nSaturation Model"]
+        GROQ["Groq Cloud LLM\n(Llama 3.3 70B Contextual)"]
+        AGG["Composite Risk Aggregator\n(0.0 - 10.0 Scale)"]
+    end
+
+    subgraph Database ["Persistence Layer"]
+        DB[("SQLite (WAL Mode + 30s Busy Timeout)\n/ PostgreSQL")]
+    end
+
+    Client -->|HTTP / JSON| RL
+    RL --> VAL
+    VAL --> SEM
+    SEM --> ROUTER
+    ROUTER -->|Spawn Background Task| TASK
+    TASK -->|Async Exec| NMAP
+    TASK -->|Async Stream| NUCLEI
+    NMAP --> Analysis
+    NUCLEI --> Analysis
+    HEUR --> AGG
+    GROQ -.->|Optional| AGG
+    AGG -->|Atomic Write| DB
+    ROUTER -.->|Poll State| DB
+```
+
+#### Scan Request Lifecycle
+```text
+[User Submits Target]
+        │
+        ▼
+[Proxy Header Check] ────(Spoofed / Rate Exceeded)───► [HTTP 429 Error]
+        │
+        ▼
+[DNS Resolution & SSRF Guard] ──(Private / Loopback)──► [HTTP 400 Rejected]
+        │
+        ▼
+[Queue Slot Acquisition] ───────(Slots Exhausted)────► [HTTP 503 Busy]
+        │
+        ▼
+[Scan ID Generated & Record Created (Status: Running)]
+        │
+        ├──────────────────────┬──────────────────────┐
+        ▼                                             ▼
+ [Nmap Process (-sV)]                      [Nuclei Process (-jsonl)]
+        │                                             │
+   (XML Output)                              (Streaming Buffer)
+        │                                             │
+        └──────────────────────┬──────────────────────┘
+                               │
+                               ▼
+               [Composite Risk Scoring Engine]
+                 ├─ Michaelis-Menten Heuristic
+                 └─ Optional Groq LLM Context
+                               │
+                               ▼
+               [Persist to SQLite WAL / PostgreSQL]
+                               │
+                               ▼
+               [Status: Completed / Partial]
 ```
 
 ---
