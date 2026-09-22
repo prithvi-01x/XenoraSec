@@ -652,9 +652,56 @@ xenorasec/
 
 ---
 
-## 🤝 Contributing & License
+## 🗺️ Product Roadmap
 
-Contributions are welcome! Please fork and submit a PR.
-This project is licensed under the **MIT License**.
+- [x] **Asynchronous Dual-Engine Orchestration** (Nmap + Nuclei)
+- [x] **Deterministic Michaelis-Menten Risk Scoring Model**
+- [x] **Optional Groq Cloud LLM Integration** (Llama 3.3 70B)
+- [x] **Zero-Trust SSRF & DNS Rebinding Protection**
+- [x] **SQLite WAL Mode & High-Concurrency Hardening**
+- [x] **Mobile Responsive Navigation Drawer & Real-Time Input Badges**
+- [ ] **Automated PDF / Executive Security Report Export**
+- [ ] **Webhook Notifications** (Slack, Discord, Microsoft Teams, Generic Webhook)
+- [ ] **Recurring Scheduled Scans** (Cron-like interval scanning)
+- [ ] **Multi-Node Distributed Worker Queue** (Redis + Celery support)
+- [ ] **Custom Nuclei Private Git Template Repository Ingestion**
 
-**Built with ❤️ for security professionals**
+---
+
+## 🔒 Security Disclosure Policy
+
+The security of XenoraSec and its users is paramount. If you discover a vulnerability or security flaw:
+
+1. **Do not open a public GitHub issue**.
+2. Privately submit a detailed advisory through [GitHub Security Advisories](https://github.com/prithvi-01x/XenoraSec/security/advisories/new) or contact the maintainer directly.
+3. Include detailed reproduction steps, proof-of-concept payload, and the environment affected.
+4. We follow coordinated disclosure and will acknowledge receipt within 48 hours and work with you on an expedited patch.
+
+---
+
+## 🤝 Contributing & Community
+
+We warmly welcome community contributions from security researchers and developers!
+
+1. **Fork** the repository on GitHub.
+2. Create a feature branch (`git checkout -b feature/amazing-feature`).
+3. Ensure backend tests pass (`pytest`) and frontend builds cleanly (`npm run build`).
+4. Commit your changes following [Conventional Commits](https://www.conventionalcommits.org/) format.
+5. Push to your branch (`git push origin feature/amazing-feature`).
+6. Open a Pull Request detailing the changes made and tests performed.
+
+---
+
+## 📄 License & Acknowledgements
+
+This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
+
+### Acknowledgements
+- [Nmap Security Scanner](https://nmap.org/) by Gordon Lyon (Fyodor)
+- [Nuclei Vulnerability Scanner](https://github.com/projectdiscovery/nuclei) by the ProjectDiscovery team
+- [FastAPI](https://fastapi.tiangolo.com/) by Sebastián Ramírez
+- [Groq](https://groq.com/) for low-latency LPU AI inference
+
+<p align="center">
+  <b>Built with 🛡️ for ethical hackers, defense engineers, and DevSecOps professionals.</b>
+</p>
