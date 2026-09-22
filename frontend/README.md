@@ -1,4 +1,4 @@
-# VulnScanner Frontend
+# XenoraSec Frontend
 
 Production-ready React + TypeScript frontend for the AI-powered vulnerability scanner.
 
