@@ -1,16 +1,40 @@
 # 🛡️ XenoraSec - Advanced Vulnerability Scanner
 
-A professional, production-ready AI-powered vulnerability scanner with a modern web interface. Combines **FastAPI** backend with **React + Vite** frontend.
+> **Next-Generation Autonomous Security Assessment & Threat Surface Discovery Engine**
 
-[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.109-green.svg)](https://fastapi.tiangolo.com/)
-[![React](https://img.shields.io/badge/React-18+-61DAFB.svg)](https://reactjs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5+-3178C6.svg)](https://www.typescriptlang.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python](https://img.shields.io/badge/Python-3.10+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/React-18+-61DAFB.svg?logo=react&logoColor=black)](https://reactjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5+-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3+-06B6D4.svg?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
+[![Docker Ready](https://img.shields.io/badge/Docker-Ready-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com/)
+[![AI Powered](https://img.shields.io/badge/AI-Groq%20%2B%20Llama%203.3-F05A28.svg)](https://groq.com/)
 [![GitHub](https://img.shields.io/badge/GitHub-Repository-181717?logo=github)](https://github.com/prithvi-01x/XenoraSec)
 
 <p align="center">
-  <img src="Screenshots/17.png" width="900">
+  <img src="Screenshots/17.png" width="900" alt="XenoraSec Platform Dashboard">
 </p>
+
+---
+
+## 📑 Table of Contents
+
+- [Overview](#-overview)
+- [Key Features](#-key-features)
+- [Architecture & Workflow](#-architecture)
+- [Dual-Engine Scanning](#-dual-engine-scanning)
+- [AI Risk Scoring Model](#-ai-risk-scoring-model)
+- [Security & Defensive Safeguards](#-security--defensive-safeguards)
+- [Database Architecture](#-database-architecture)
+- [REST API Reference](#-rest-api-reference)
+- [Environment Configuration](#-environment-configuration)
+- [Installation & Quick Start](#-quick-start)
+- [Production Deployment](#-production-deployment)
+- [Frontend Tour & Mobile UX](#-frontend-tour--mobile-ux)
+- [Testing & Quality Assurance](#-testing--quality-assurance)
+- [Troubleshooting & FAQ](#-troubleshooting--faq)
+- [Security Policy & Contributing](#-contributing--license)
 
 ---
 
