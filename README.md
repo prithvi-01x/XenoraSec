@@ -583,6 +583,60 @@ npm run lint
 
 ---
 
+## ❓ Troubleshooting & FAQ
+
+### 1. `Nmap not installed` or `Nuclei not installed`
+**Issue**: Backend returns error stating scanner is missing from system.  
+**Resolution**: Ensure both binaries are present in your system PATH:
+```bash
+which nmap && which nuclei
+nmap --version
+nuclei -version
+```
+If missing, follow the [Installation](#-installation--local-development-setup) instructions for your operating system.
+
+---
+
+### 2. `Target resolves to private/internal IP (X.X.X.X), which is not allowed`
+**Issue**: Scans against internal hosts or test domains fail immediately with HTTP 400.  
+**Resolution**: XenoraSec enables SSRF defense by default. If you are authorized to audit internal private networks (e.g. staging or home lab):
+```env
+# Inside your .env file:
+ALLOW_PRIVATE_IP_SCANNING=True
+ALLOW_LOCALHOST_SCANNING=True
+```
+Restart the backend service to apply.
+
+---
+
+### 3. `sqlite3.OperationalError: database is locked`
+**Issue**: Occurs if another process locked `scans.db` without WAL mode enabled.  
+**Resolution**: XenoraSec automatically applies `PRAGMA journal_mode=WAL` and a 30-second busy timeout. Ensure the process directory has write permissions so SQLite can create the `-wal` and `-shm` auxiliary files:
+```bash
+chmod 664 scans.db*
+```
+
+---
+
+### 4. `Rate limit exceeded: 10 requests per minute` (HTTP 429)
+**Issue**: Frequent API calls or automated frontend testing trigger rate limiting.  
+**Resolution**: Increase the per-minute threshold or configure reverse proxy header trust in `.env`:
+```env
+RATE_LIMIT_PER_MINUTE=60
+TRUST_PROXY_HEADERS=True
+```
+
+---
+
+### 5. Updating Nuclei Templates
+**Issue**: Scans miss newly disclosed CVEs.  
+**Resolution**: Regularly sync the community templates repository:
+```bash
+nuclei -update-templates
+```
+
+---
+
 ## 📁 Project Structure
 
 ```
