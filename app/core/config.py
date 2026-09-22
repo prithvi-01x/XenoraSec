@@ -57,6 +57,8 @@ class Settings(BaseSettings):
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT_PER_MINUTE: int = 10
     RATE_LIMIT_PER_HOUR: int = 100
+    TRUST_PROXY_HEADERS: bool = False
+    TRUSTED_PROXIES: List[str] = Field(default_factory=lambda: ["127.0.0.1", "::1"])
     
     # ==================== LOGGING ====================
     LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL

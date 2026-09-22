@@ -105,23 +105,44 @@ class RateLimiter:
         return True, None
     
     def get_client_ip(self, request: Request) -> str:
-        """Extract client IP from request.
+        """Extract client IP from request safely.
         
-        Uses the LAST entry in X-Forwarded-For, which is appended by the
-        trusted reverse proxy (e.g. Render/nginx) and cannot be spoofed by
-        a client sending a fake header.
+        Header spoofing prevention:
+        1. Only inspect X-Forwarded-For or X-Real-IP if settings.TRUST_PROXY_HEADERS is enabled.
+        2. If enabled, verify the direct peer (request.client.host) is a known trusted proxy
+           (or settings.TRUSTED_PROXIES is configured).
+        3. Parse the rightmost hop in X-Forwarded-For (appended by the trusted proxy).
+        4. Validate that the candidate IP is a valid IPv4 or IPv6 string.
+        5. Fallback strictly to direct request.client.host.
         """
+        direct_ip = request.client.host if request.client else "unknown"
+
+        if not settings.TRUST_PROXY_HEADERS:
+            return direct_ip
+
+        # If trusted proxies list is populated, ensure the immediate client is trusted
+        if settings.TRUSTED_PROXIES and direct_ip not in settings.TRUSTED_PROXIES:
+            return direct_ip
+
+        candidate_ip: Optional[str] = None
         forwarded = request.headers.get("X-Forwarded-For")
         if forwarded:
-            # Last entry is added by our trusted proxy — cannot be faked
-            return forwarded.split(",")[-1].strip()
-        
-        real_ip = request.headers.get("X-Real-IP")
-        if real_ip:
-            return real_ip
-        
-        # Fallback to direct client
-        return request.client.host if request.client else "unknown"
+            # Last entry is appended by our trusted proxy — cannot be faked by client
+            parts = [p.strip() for p in forwarded.split(",") if p.strip()]
+            if parts:
+                candidate_ip = parts[-1]
+        elif "X-Real-IP" in request.headers:
+            candidate_ip = request.headers.get("X-Real-IP", "").strip()
+
+        if candidate_ip:
+            import ipaddress
+            try:
+                ipaddress.ip_address(candidate_ip)
+                return candidate_ip
+            except ValueError:
+                logger.warning(f"Invalid candidate IP address in proxy header: {candidate_ip}")
+
+        return direct_ip
 
 
 # Global rate limiter instance
