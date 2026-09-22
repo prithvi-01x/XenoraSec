@@ -67,34 +67,86 @@ export function formatDate(dateString: string): string {
     return new Date(dateString).toLocaleString();
 }
 
-export function validateTarget(target: string): { valid: boolean; error?: string } {
+export interface TargetValidationResult {
+    valid: boolean;
+    error?: string;
+    targetType?: 'ipv4' | 'ipv6' | 'domain' | 'url' | 'localhost';
+}
+
+export function validateTarget(target: string): TargetValidationResult {
     if (!target || target.trim().length === 0) {
         return { valid: false, error: 'Target is required' };
     }
 
     const trimmed = target.trim();
+    const lower = trimmed.toLowerCase();
 
-    // IP address pattern
-    const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+    // Check localhost
+    if (lower === 'localhost' || lower.endsWith('.localhost')) {
+        return { valid: true, targetType: 'localhost' };
+    }
 
-    // Domain pattern
-    const domainPattern = /^([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$/;
-
-    // URL pattern
-    const urlPattern = /^https?:\/\/.+/;
-
-    if (ipPattern.test(trimmed)) {
-        // Validate IP octets
-        const octets = trimmed.split('.').map(Number);
-        if (octets.some(octet => octet < 0 || octet > 255)) {
-            return { valid: false, error: 'Invalid IP address' };
+    // URL format check
+    if (lower.startsWith('http://') || lower.startsWith('https://')) {
+        try {
+            const parsed = new URL(trimmed);
+            if (!parsed.hostname) {
+                return { valid: false, error: 'URL is missing a valid hostname' };
+            }
+            if (parsed.hostname === 'localhost') {
+                return { valid: true, targetType: 'localhost' };
+            }
+            return { valid: true, targetType: 'url' };
+        } catch {
+            return { valid: false, error: 'Malformed URL format' };
         }
-        return { valid: true };
     }
 
-    if (domainPattern.test(trimmed) || urlPattern.test(trimmed)) {
-        return { valid: true };
+    // IPv4 pattern
+    if (/^[\d.]+$/.test(trimmed)) {
+        const parts = trimmed.split('.');
+        if (parts.length !== 4) {
+            return { valid: false, error: 'IPv4 address must contain exactly 4 octets' };
+        }
+        for (const part of parts) {
+            if (part === '' || isNaN(Number(part))) {
+                return { valid: false, error: 'Invalid numeric octet in IP address' };
+            }
+            const num = Number(part);
+            if (num < 0 || num > 255) {
+                return { valid: false, error: `IP octet ${num} is out of range (0-255)` };
+            }
+        }
+        if (trimmed.startsWith('127.')) {
+            return { valid: true, targetType: 'localhost' };
+        }
+        return { valid: true, targetType: 'ipv4' };
     }
 
-    return { valid: false, error: 'Invalid target format. Use IP, domain, or URL' };
+    // Simple IPv6 check (e.g., ::1 or standard hex groups)
+    if (trimmed.includes(':')) {
+        if (trimmed === '::1') {
+            return { valid: true, targetType: 'localhost' };
+        }
+        const ipv6Pattern = /^([0-9a-fA-F]{1,4}:){1,7}:?([0-9a-fA-F]{1,4})?$/;
+        if (ipv6Pattern.test(trimmed)) {
+            return { valid: true, targetType: 'ipv6' };
+        }
+        return { valid: false, error: 'Invalid IPv6 address format' };
+    }
+
+    // Domain validation
+    if (trimmed.length > 253) {
+        return { valid: false, error: 'Domain name cannot exceed 253 characters' };
+    }
+
+    const domainPattern = /^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
+    if (domainPattern.test(trimmed)) {
+        return { valid: true, targetType: 'domain' };
+    }
+
+    return { 
+        valid: false, 
+        error: 'Invalid target format. Enter a valid IPv4/IPv6, domain (e.g. example.com), or URL (https://...)' 
+    };
 }
