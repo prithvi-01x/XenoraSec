@@ -257,6 +257,76 @@ When a PostgreSQL connection string is detected, XenoraSec automatically activat
 
 ---
 
+## 📡 REST API Reference
+
+XenoraSec provides a clean, fully documented OpenAPI (Swagger) interface accessible at `/docs`.
+
+### Core Endpoints
+
+| Method | Endpoint | Description | Status Codes |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/scan/` | Initiate a new security scan | `200`, `400`, `429`, `503` |
+| `GET` | `/api/scan/results/{scan_id}` | Fetch full scan results & findings | `200`, `400`, `404` |
+| `GET` | `/api/scan/history` | Paginated historical scan records | `200`, `400` |
+| `POST` | `/api/scan/{scan_id}/retry` | Retry a failed, timeout, or partial scan | `200`, `400`, `404`, `503` |
+| `POST` | `/api/scan/{scan_id}/cancel` | Abort a running background scan | `200`, `400`, `404` |
+| `DELETE` | `/api/scan/{scan_id}` | Permanently delete a scan result | `200`, `400`, `404` |
+| `GET` | `/api/scan/queue` | Query active scan concurrency slots | `200` |
+| `POST` | `/api/scan/cleanup` | Purge scans older than N days (`secret` req) | `200`, `403`, `503` |
+| `GET` | `/health` | Liveness & database connection health | `200`, `503` |
+
+### API Usage Examples
+
+#### 1. Launch a New Scan
+```bash
+curl -X POST "http://localhost:8000/api/scan/" \
+     -H "Content-Type: application/json" \
+     -d '{"target": "example.com"}'
+```
+**Response (`200 OK`):**
+```json
+{
+  "scan_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+  "target": "example.com",
+  "status": "running",
+  "message": "Scan started successfully"
+}
+```
+
+#### 2. Query Scan Results & Risk Intelligence
+```bash
+curl -s "http://localhost:8000/api/scan/results/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d"
+```
+**Response Sample:**
+```json
+{
+  "scan_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+  "target": "example.com",
+  "status": "completed",
+  "risk_score": 6.84,
+  "duration": 42.18,
+  "summary": {
+    "total_vulnerabilities": 3,
+    "open_ports": 2,
+    "severity_distribution": {
+      "critical": 0,
+      "high": 1,
+      "medium": 2,
+      "low": 0,
+      "info": 0
+    },
+    "risk_level": "high"
+  }
+}
+```
+
+#### 3. Retry a Partial or Failed Scan
+```bash
+curl -X POST "http://localhost:8000/api/scan/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d/retry"
+```
+
+---
+
 ## 📸 Screenshots
 
 ### Dashboard - Scan Progress
