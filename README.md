@@ -448,6 +448,70 @@ Visit **[http://localhost:5173](http://localhost:5173)** in your browser. The fr
 
 ---
 
+## 🚢 Production Deployment
+
+### 1. Deploying to Render via Blueprint (`render.yaml`)
+
+XenoraSec includes a turnkey `render.yaml` blueprint:
+
+1. Fork this repository to your GitHub account.
+2. Log in to [Render](https://render.com/) and navigate to **Blueprints**.
+3. Connect your repository: Render will detect `render.yaml` and provision:
+   - **`xenorasec-backend`**: Docker Web Service running the optimized `Dockerfile.render` with precompiled Nuclei and Nmap.
+   - **`xenorasec-frontend`**: Static Site serving compiled React SPA with client-side SPA routing rewrites.
+4. Add any custom environment variables (such as `GROQ_API_KEY`) via the Render Dashboard.
+
+### 2. Multi-Container Production via Docker Compose
+
+For on-premise or cloud VPS deployments (AWS EC2, DigitalOcean, Hetzner), use Docker Compose:
+
+```yaml
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: xenorasec
+      POSTGRES_PASSWORD: secure_db_password
+      POSTGRES_DB: xenorasec
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U xenorasec"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.render
+    restart: unless-stopped
+    ports:
+      - "8000:10000"
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://xenorasec:secure_db_password@postgres:5432/xenorasec"
+      ALLOW_LOCALHOST_SCANNING: "false"
+      ALLOW_PRIVATE_IP_SCANNING: "false"
+      RATE_LIMIT_ENABLED: "true"
+      TRUST_PROXY_HEADERS: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+```
+
+Launch with:
+```bash
+docker compose up -d --build
+```
+
+---
+
 ## 📚 Documentation & API
 
 - **API Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
