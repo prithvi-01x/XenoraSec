@@ -105,6 +105,7 @@ class NmapScanner:
             target
         ]
         
+        process = None
         try:
             process = await asyncio.create_subprocess_exec(
                 *command,
@@ -118,8 +119,9 @@ class NmapScanner:
                     timeout=self.timeout + 10
                 )
             except asyncio.TimeoutError:
-                process.kill()
-                await process.wait()
+                if process.returncode is None:
+                    process.kill()
+                    await process.wait()
                 logger.warning(f"Nmap timeout for {target}")
                 return {
                     "status": ScanStatus.TIMEOUT.value,
@@ -127,6 +129,15 @@ class NmapScanner:
                     "ports": [],
                     "total_ports": 0
                 }
+            except asyncio.CancelledError:
+                logger.warning(f"Nmap scan cancelled while awaiting output for {target}")
+                if process.returncode is None:
+                    try:
+                        process.kill()
+                        await process.wait()
+                    except Exception:
+                        pass
+                raise
             
             if process.returncode != 0:
                 error_msg = stderr.decode().strip()
@@ -151,7 +162,14 @@ class NmapScanner:
                 "ports": [],
                 "total_ports": 0
             }
-        
+        except asyncio.CancelledError:
+            if process and process.returncode is None:
+                try:
+                    process.kill()
+                    await process.wait()
+                except Exception:
+                    pass
+            raise
         except Exception as e:
             logger.exception(f"Nmap execution error: {e}")
             return {
@@ -161,6 +179,13 @@ class NmapScanner:
                 "ports": [],
                 "total_ports": 0
             }
+        finally:
+            if process and process.returncode is None:
+                try:
+                    process.kill()
+                    await process.wait()
+                except Exception:
+                    pass
     
     def _parse_xml(self, xml_data: str, target: str) -> Dict[str, Any]:
         """

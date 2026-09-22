@@ -139,11 +139,24 @@ class NucleiScanner:
             # Wait for process to finish
             await process.wait()
         
+        except asyncio.CancelledError:
+            logger.warning(f"Nuclei scan cancelled for {target}")
+            if process and process.returncode is None:
+                try:
+                    process.kill()
+                    await process.wait()
+                except Exception:
+                    pass
+            raise
+
         except Exception as e:
             logger.exception(f"Nuclei runtime error: {e}")
-            if process.returncode is None:
-                process.kill()
-                await process.wait()
+            if process and process.returncode is None:
+                try:
+                    process.kill()
+                    await process.wait()
+                except Exception:
+                    pass
             
             return {
                 "status": ScanStatus.FAILED.value,
@@ -153,6 +166,14 @@ class NucleiScanner:
                 "total_vulnerabilities": 0,
                 "severity_distribution": {}
             }
+        
+        finally:
+            if process and process.returncode is None:
+                try:
+                    process.kill()
+                    await process.wait()
+                except Exception:
+                    pass
         
         # Determine final status
         status = ScanStatus.COMPLETED.value
