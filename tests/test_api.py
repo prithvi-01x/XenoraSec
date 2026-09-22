@@ -92,10 +92,11 @@ async def test_retry_partial_and_failed_scans(client):
     assert "retry" in res.json()["detail"].lower()
 
     # Partial scan should be allowed for retry (it will initiate or re-validate)
-    # Target resolution for example.com is valid, so it starts the retry
-    res = client.post(f"/api/scan/{partial_id}/retry")
-    assert res.status_code in [200, 503]  # 200 if slots available, 503 if queue full
-    if res.status_code == 200:
-        data = res.json()
-        assert data["status"] == "running"
-        assert "scan_id" in data
+    from unittest.mock import patch
+    with patch("app.routes.scan._run_and_store_scan", return_value=None):
+        res = client.post(f"/api/scan/{partial_id}/retry")
+        assert res.status_code in [200, 503]  # 200 if slots available, 503 if queue full
+        if res.status_code == 200:
+            data = res.json()
+            assert data["status"] == "running"
+            assert "scan_id" in data
