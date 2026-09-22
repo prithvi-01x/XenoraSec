@@ -81,6 +81,9 @@ class Settings(BaseSettings):
     
     CVSS_MULTIPLIER: float = 0.15
     OPEN_PORT_FACTOR: float = 0.05
+    GROQ_API_KEY: Optional[str] = None
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_TIMEOUT: float = 10.0
     
     class Config:
         env_file = ".env"
