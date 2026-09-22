@@ -154,6 +154,47 @@ XenoraSec integrates two premier security tools through asynchronous streaming w
 - **Vulnerability Safety Cap**: Configurable limit (`MAX_VULNERABILITIES = 1000`) prevents Denial-of-Service attacks from honeypots or wildcard DNS servers returning infinite findings.
 - **Partial Health Classification**: If JSON decode errors exceed 20% of total lines emitted, the scan is flagged as `PARTIAL` rather than `FAILED`, preserving valid CVE and CWE discoveries.
 
+---
+
+## 🧠 AI Risk Scoring & Saturation Model
+
+Security teams need risk scores that are both **contextually intelligent** and **mathematically predictable**. XenoraSec implements a hybrid evaluation system:
+
+### 1. The Michaelis-Menten Mathematical Saturation Model
+Rather than using arbitrary linear formulas that easily overflow or artificial step-functions, XenoraSec uses a hyperbolic saturation function adapted from enzyme kinetics (Michaelis-Menten / Hill equation):
+
+$$\text{Risk Score} = V_{\max} \cdot \left( \frac{S}{S + K_m} \right)$$
+
+Where:
+- **$V_{\max} = 10.0$**: The theoretical maximum risk score ceiling.
+- **$K_m = 15.0$**: The half-saturation constant (the raw score required to yield exactly a 5.0 risk score).
+- **$S$**: The accumulated raw vulnerability and network exposure score.
+
+#### Raw Score ($S$) Calculation:
+$$S = \sum_{v \in V} \text{Weight}(\text{severity}_v) + \sum_{v \in V} \left( \text{CVSS}_v \times 0.15 \right) + \min\left( \text{open\_ports} \times 0.05, 1.0 \right)$$
+
+| Finding Type | Base Weight | Multiplier / Cap | Description |
+| :--- | :--- | :--- | :--- |
+| **Critical** | `5.0` | N/A | Remotely exploitable RCE, auth bypass, SQLi |
+| **High** | `3.0` | N/A | Privileged read, SSRF, major misconfigurations |
+| **Medium** | `2.0` | N/A | Reflected XSS, CSRF, insecure transport |
+| **Low** | `1.0` | N/A | Information disclosures, weak cipher suites |
+| **Info / Unknown**| `0.5` | N/A | Technology banners, DNS records, headers |
+| **CVSS Metric** | Variable | $\times 0.15$ | Direct contribution from official CVSS score |
+| **Open Ports** | Variable | $\min(P \times 0.05, 1.0)$ | Attack surface perimeter exposure factor |
+
+#### Mathematical Guarantees:
+1. **Strict Monotonicity**: Adding any new vulnerability or open port always increases or preserves the score ($\frac{\partial \text{Score}}{\partial S} > 0$).
+2. **Strict Boundedness**: For any finite or infinite set of findings, $0.0 \le \text{Score} \le 10.0$.
+3. **Diminishing Marginal Risk**: The first critical vulnerability introduces an urgent jump (~2.5 to 3.5 points), while additional findings reflect real-world attack path convergence rather than artificial numeric inflation.
+
+### 2. Optional Groq Cloud LLM Integration
+When `GROQ_API_KEY` is defined in `.env`, XenoraSec augments the heuristic model with a zero-latency inference call to **Llama 3.3 70B** on Groq Cloud:
+- **Holistic Threat Analysis**: Evaluates how open port topologies chain together with discovered template vulnerabilities.
+- **Zero-Friction Fallback**: If the Groq API exceeds the 10-second timeout, runs out of quota, or encounters a network partition, the platform silently and immediately falls back to the deterministic Michaelis-Menten model without failing the scan.
+
+---
+
 ## 📸 Screenshots
 
 ### Dashboard - Scan Progress
