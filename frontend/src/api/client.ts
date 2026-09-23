@@ -7,6 +7,10 @@ import type {
     QueueInfo,
     HealthStatus,
     DashboardStats,
+    ProfileDefinition,
+    TemplateTag,
+    ReportFormat,
+    ReportType,
 } from '../types/api';
 
 // API Base URL Configuration
@@ -97,6 +101,52 @@ export const scanApi = {
     cancelScan: async (scanId: string): Promise<{ message: string; scan_id: string }> => {
         const response = await apiClient.post(`/api/scan/${scanId}/cancel`);
         return response.data;
+    },
+
+    // Get available scan profiles
+    getProfiles: async (): Promise<{ profiles: ProfileDefinition[] }> => {
+        const response = await apiClient.get<{ profiles: ProfileDefinition[] }>('/api/scan/profiles');
+        return response.data;
+    },
+
+    // Get available Nuclei template categories and tags
+    getTemplates: async (): Promise<{ tags: TemplateTag[] }> => {
+        const response = await apiClient.get<{ tags: TemplateTag[] }>('/api/scan/templates');
+        return response.data;
+    },
+
+    // Get download URL for report
+    getReportUrl: (scanId: string, format: ReportFormat = 'html', reportType: ReportType = 'technical'): string => {
+        return `${API_BASE_URL}/api/scan/${scanId}/report?format=${format}&report_type=${reportType}`;
+    },
+
+    // Fetch report blob for direct browser triggering
+    downloadReport: async (
+        scanId: string,
+        format: ReportFormat = 'html',
+        reportType: ReportType = 'technical'
+    ): Promise<Blob> => {
+        const response = await apiClient.get(
+            `/api/scan/${scanId}/report`,
+            {
+                params: { format, report_type: reportType },
+                responseType: 'blob',
+            }
+        );
+        return response.data;
+    },
+
+    // Get SSE stream URL
+    getStreamUrl: (scanId: string): string => {
+        return `${API_BASE_URL}/api/scan/${scanId}/stream`;
+    },
+
+    // Get WebSocket URL
+    getWsUrl: (scanId: string): string => {
+        const base = API_BASE_URL || window.location.origin;
+        const wsProto = base.startsWith('https') ? 'wss' : 'ws';
+        const cleanHost = base.replace(/^https?:\/\//, '');
+        return `${wsProto}://${cleanHost}/api/scan/${scanId}/ws`;
     },
 
     // Cleanup old scans (requires CLEANUP_SECRET env var set on backend)
