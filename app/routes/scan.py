@@ -24,6 +24,7 @@ from app.db.crud import (
     cleanup_old_scans
 )
 from app.services.scanner_service import run_full_scan, get_scan_queue_info
+from app.services.profile_service import get_available_profiles, get_available_tags, resolve_scan_options
 from app.core.security import validate_target, sanitize_scan_id, TargetValidationError
 from app.core.rate_limit import check_rate_limit
 from app.core.logging import get_logger
@@ -432,6 +433,24 @@ async def get_queue():
     Get current scan queue information.
     """
     return get_scan_queue_info()
+
+
+# ==================== PROFILES & TEMPLATES ====================
+
+@router.get("/profiles")
+async def get_profiles():
+    """
+    List available scan profiles (Quick, Full Web Audit, Network Discovery, Custom).
+    """
+    return {"profiles": get_available_profiles()}
+
+
+@router.get("/templates")
+async def get_templates():
+    """
+    List available Nuclei template categories and tags.
+    """
+    return {"tags": get_available_tags()}
 
 
 # ==================== BACKGROUND SCAN TASK ====================
