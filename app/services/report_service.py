@@ -340,3 +340,490 @@ def generate_markdown_report(
     return "\n".join(lines)
 
 
+def generate_html_report(
+    scan: Dict[str, Any],
+    report_type: ReportType = ReportType.TECHNICAL
+) -> str:
+    """
+    Generate an offline-capable, cyber-themed, print-optimized HTML security report.
+    """
+    target = scan.get("target", "Target Host")
+    scan_id = scan.get("scan_id", "unknown-scan")
+    risk_score = float(scan.get("risk_score", 0.0))
+    scan_profile = scan.get("scan_profile", "quick")
+    exec_summary = generate_executive_summary(scan)
+
+    nuclei_res = scan.get("nuclei", {}) if isinstance(scan.get("nuclei"), dict) else {}
+    nmap_res = scan.get("nmap", {}) if isinstance(scan.get("nmap"), dict) else {}
+    cves = extract_cve_details(nuclei_res, target)
+    ports = nmap_res.get("ports", [])
+
+    # Color mapping for risk
+    if risk_score >= 8.0 or exec_summary.critical_count > 0:
+        score_color = "#ef4444"
+        badge_bg = "#450a0a"
+        badge_border = "#991b1b"
+    elif risk_score >= 6.0 or exec_summary.high_count > 0:
+        score_color = "#f97316"
+        badge_bg = "#431407"
+        badge_border = "#9a3412"
+    elif risk_score >= 3.5 or exec_summary.medium_count > 0:
+        score_color = "#eab308"
+        badge_bg = "#422006"
+        badge_border = "#854d0e"
+    elif risk_score > 0.0 or exec_summary.low_count > 0 or len(ports) > 0:
+        score_color = "#3b82f6"
+        badge_bg = "#172554"
+        badge_border = "#1e40af"
+    else:
+        score_color = "#10b981"
+        badge_bg = "#064e3b"
+        badge_border = "#065f46"
+
+    # Build CVE HTML cards
+    cve_cards_html = ""
+    if not cves:
+        cve_cards_html = """
+        <div class="empty-state">
+            <p>No critical, high, or medium exploitable vulnerabilities were identified during this assessment.</p>
+        </div>
+        """
+    else:
+        for idx, cve in enumerate(cves, 1):
+            sev_upper = cve.severity.upper()
+            sev_color = {
+                "critical": "#ef4444",
+                "high": "#f97316",
+                "medium": "#eab308",
+                "low": "#3b82f6",
+                "info": "#64748b"
+            }.get(cve.severity.lower(), "#64748b")
+
+            cvss_badge = f'<span class="pill pill-cvss">CVSS {cve.cvss_score}</span>' if cve.cvss_score else ''
+            cwe_badge = f'<span class="pill pill-cwe">{cve.cwe_id}</span>' if cve.cwe_id else ''
+
+            refs_html = "".join([f'<li><a href="{r}" target="_blank" rel="noopener">{r}</a></li>' for r in cve.references])
+            refs_section = f'<div class="advisory-refs"><strong>References:</strong><ul>{refs_html}</ul></div>' if refs_html else ''
+
+            cve_cards_html += f"""
+            <div class="card vuln-card" style="border-left: 4px solid {sev_color};">
+                <div class="vuln-header">
+                    <div class="vuln-title-wrap">
+                        <span class="sev-tag" style="background: {sev_color}22; color: {sev_color}; border: 1px solid {sev_color}66;">
+                            {sev_upper}
+                        </span>
+                        <h4 class="vuln-title">{cve.title}</h4>
+                    </div>
+                    <div class="pill-group">
+                        <span class="pill pill-id">{cve.cve_id}</span>
+                        {cvss_badge}
+                        {cwe_badge}
+                    </div>
+                </div>
+                <div class="vuln-body">
+                    <p class="vuln-target"><strong>Matched Location:</strong> <code>{cve.affected_target}</code></p>
+                    <p class="vuln-desc">{cve.description}</p>
+                    <div class="remediation-box">
+                        <strong>Remediation Advice:</strong>
+                        <p>{cve.remediation_advice}</p>
+                    </div>
+                    {refs_section}
+                </div>
+            </div>
+            """
+
+    # Build ports HTML table rows
+    ports_rows_html = ""
+    if not ports:
+        ports_rows_html = '<tr><td colspan="4" style="text-align: center; color: #64748b;">No standard open ports discovered.</td></tr>'
+    else:
+        for p in ports:
+            port_proto = f"{p.get('port')}/{p.get('protocol', 'tcp')}"
+            svc = p.get('service') or 'unknown'
+            ver = f"{p.get('product', '')} {p.get('version', '')}".strip() or '-'
+            extra = p.get('extrainfo') or '-'
+            ports_rows_html += f"""
+            <tr>
+                <td><code>{port_proto}</code></td>
+                <td><span class="service-tag">{svc}</span></td>
+                <td>{ver}</td>
+                <td class="text-muted">{extra}</td>
+            </tr>
+            """
+
+    # Key findings HTML list
+    findings_list_html = "".join([f"<li>{f}</li>" for f in exec_summary.key_findings])
+    recs_list_html = "".join([f"<li>{r}</li>" for r in exec_summary.strategic_recommendations])
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{settings.REPORT_COMPANY_NAME} - Security Report - {target}</title>
+    <style>
+        :root {{
+            --bg: #090d16;
+            --surface: #111827;
+            --surface-border: #1f2937;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --primary: #3b82f6;
+            --accent: #06b6d4;
+        }}
+        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text-main);
+            line-height: 1.6;
+            padding: 32px 16px;
+        }}
+        .container {{
+            max-width: 1040px;
+            margin: 0 auto;
+        }}
+        header.report-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--surface-border);
+            padding-bottom: 24px;
+            margin-bottom: 32px;
+        }}
+        .brand-badge {{
+            display: inline-block;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--accent);
+            font-weight: 700;
+            margin-bottom: 4px;
+        }}
+        h1.report-title {{
+            font-size: 1.85rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+        }}
+        .header-actions {{
+            display: flex;
+            gap: 12px;
+        }}
+        .btn-print {{
+            background: #2563eb;
+            color: #ffffff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }}
+        .btn-print:hover {{ opacity: 0.9; }}
+        
+        .card {{
+            background: var(--surface);
+            border: 1px solid var(--surface-border);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }}
+        .overview-grid {{
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 24px;
+        }}
+        @media (max-width: 768px) {{
+            .overview-grid {{ grid-template-columns: 1fr; }}
+        }}
+        .risk-gauge-card {{
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: {badge_bg};
+            border: 1px solid {badge_border};
+            border-radius: 12px;
+            padding: 20px;
+        }}
+        .risk-score-value {{
+            font-size: 3.5rem;
+            font-weight: 900;
+            color: {score_color};
+            line-height: 1;
+        }}
+        .risk-score-max {{ font-size: 1.25rem; color: var(--text-muted); }}
+        .risk-label {{
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: {score_color};
+            margin-top: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }}
+        
+        .meta-list {{
+            list-style: none;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+        }}
+        .meta-item strong {{ display: block; font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); }}
+        .meta-item span {{ font-size: 0.95rem; font-weight: 600; }}
+        
+        .counts-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+            margin-top: 20px;
+        }}
+        .count-card {{
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--surface-border);
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+        }}
+        .count-card .val {{ font-size: 1.75rem; font-weight: 800; }}
+        .count-card .lbl {{ font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; }}
+        
+        h2.section-heading {{
+            font-size: 1.35rem;
+            font-weight: 700;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #ffffff;
+        }}
+        ul.bullet-list {{ padding-left: 20px; margin-bottom: 16px; }}
+        ul.bullet-list li {{ margin-bottom: 8px; }}
+        ol.ordered-list {{ padding-left: 20px; margin-bottom: 16px; }}
+        ol.ordered-list li {{ margin-bottom: 8px; }}
+        
+        /* Vulnerability cards */
+        .vuln-card {{
+            background: #111827;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }}
+        .vuln-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 12px;
+        }}
+        .vuln-title-wrap {{
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }}
+        .sev-tag {{
+            font-size: 0.75rem;
+            font-weight: 800;
+            padding: 2px 8px;
+            border-radius: 4px;
+            letter-spacing: 0.05em;
+        }}
+        .vuln-title {{ font-size: 1.1rem; font-weight: 700; color: #ffffff; }}
+        .pill-group {{ display: flex; gap: 6px; flex-wrap: wrap; }}
+        .pill {{
+            font-size: 0.75rem;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #e2e8f0;
+        }}
+        .pill-cvss {{ background: #7c2d12; color: #fed7aa; border-color: #c2410c; font-weight: 700; }}
+        .vuln-body p {{ margin-bottom: 10px; font-size: 0.95rem; }}
+        code {{
+            background: rgba(255,255,255,0.08);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 0.85em;
+        }}
+        .remediation-box {{
+            background: rgba(16, 185, 129, 0.08);
+            border-left: 3px solid #10b981;
+            padding: 12px;
+            border-radius: 0 6px 6px 0;
+            margin-top: 12px;
+        }}
+        .remediation-box strong {{ color: #34d399; font-size: 0.85rem; text-transform: uppercase; display: block; margin-bottom: 4px; }}
+        .advisory-refs {{ margin-top: 12px; font-size: 0.85rem; }}
+        .advisory-refs a {{ color: var(--primary); text-decoration: none; word-break: break-all; }}
+        .advisory-refs a:hover {{ text-decoration: underline; }}
+
+        /* Data table */
+        table.data-table {{
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.9rem;
+        }}
+        table.data-table th {{
+            background: rgba(255,255,255,0.04);
+            color: var(--text-muted);
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--surface-border);
+        }}
+        table.data-table td {{
+            padding: 12px 14px;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+        }}
+        .service-tag {{
+            background: rgba(59, 130, 246, 0.15);
+            color: #93c5fd;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }}
+        footer.report-footer {{
+            text-align: center;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            border-top: 1px solid var(--surface-border);
+            padding-top: 24px;
+            margin-top: 40px;
+        }}
+
+        /* Print optimization */
+        @media print {{
+            body {{ background: #ffffff !important; color: #111827 !important; padding: 0; }}
+            .btn-print {{ display: none !important; }}
+            .card {{ border: 1px solid #e5e7eb !important; background: #ffffff !important; box-shadow: none !important; color: #111827 !important; }}
+            .risk-gauge-card {{ background: #f9fafb !important; border: 1px solid #d1d5db !important; }}
+            .vuln-card {{ page-break-inside: avoid; border: 1px solid #e5e7eb !important; background: #f9fafb !important; color: #111827 !important; }}
+            .vuln-title {{ color: #111827 !important; }}
+            h1, h2, h3, h4 {{ color: #111827 !important; }}
+            code {{ background: #f3f4f6 !important; color: #111827 !important; }}
+            .pill {{ background: #e5e7eb !important; color: #374151 !important; border: 1px solid #d1d5db !important; }}
+            table.data-table th {{ background: #f3f4f6 !important; color: #4b5563 !important; }}
+            table.data-table td {{ border-bottom: 1px solid #e5e7eb !important; color: #111827 !important; }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="report-header">
+            <div>
+                <span class="brand-badge">{settings.REPORT_COMPANY_NAME}</span>
+                <h1 class="report-title">Security Assessment Report</h1>
+                <p style="color: var(--text-muted); font-size: 0.875rem;">Target: <strong>{target}</strong> | Mode: <strong>{report_type.value.upper()}</strong></p>
+            </div>
+            <div class="header-actions">
+                <button onclick="window.print()" class="btn-print">Print / Save as PDF</button>
+            </div>
+        </header>
+
+        <!-- Executive Overview Card -->
+        <div class="card">
+            <h2 class="section-heading">Executive Security Posture</h2>
+            <div class="overview-grid">
+                <div>
+                    <ul class="meta-list">
+                        <li class="meta-item">
+                            <strong>Target System</strong>
+                            <span>{target}</span>
+                        </li>
+                        <li class="meta-item">
+                            <strong>Assessment Date</strong>
+                            <span>{exec_summary.scan_date.strftime('%Y-%m-%d %H:%M UTC')}</span>
+                        </li>
+                        <li class="meta-item">
+                            <strong>Scan Profile</strong>
+                            <span>{scan_profile.upper()}</span>
+                        </li>
+                        <li class="meta-item">
+                            <strong>Assessment ID</strong>
+                            <span>{scan_id[:16]}...</span>
+                        </li>
+                    </ul>
+
+                    <div class="counts-grid">
+                        <div class="count-card">
+                            <div class="val" style="color: #ef4444;">{exec_summary.critical_count}</div>
+                            <div class="lbl">Critical</div>
+                        </div>
+                        <div class="count-card">
+                            <div class="val" style="color: #f97316;">{exec_summary.high_count}</div>
+                            <div class="lbl">High</div>
+                        </div>
+                        <div class="count-card">
+                            <div class="val" style="color: #eab308;">{exec_summary.medium_count}</div>
+                            <div class="lbl">Medium</div>
+                        </div>
+                        <div class="count-card">
+                            <div class="val" style="color: #3b82f6;">{exec_summary.open_ports_count}</div>
+                            <div class="lbl">Open Ports</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="risk-gauge-card">
+                    <div class="risk-score-value">{risk_score:.1f}<span class="risk-score-max">/10</span></div>
+                    <div class="risk-label">{exec_summary.risk_category}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Key Findings & Recommendations -->
+        <div class="card">
+            <h2 class="section-heading">Key Findings & Strategic Recommendations</h2>
+            <h3 style="font-size: 1rem; color: #94a3b8; margin-bottom: 8px;">Key Executive Observations:</h3>
+            <ul class="bullet-list">
+                {findings_list_html}
+            </ul>
+
+            <h3 style="font-size: 1rem; color: #94a3b8; margin-top: 16px; margin-bottom: 8px;">Remediation Priorities:</h3>
+            <ol class="ordered-list">
+                {recs_list_html}
+            </ol>
+        </div>
+
+        <!-- Detailed Vulnerabilities -->
+        <div class="card">
+            <h2 class="section-heading">Vulnerabilities & CVE Breakdown ({len(cves)})</h2>
+            {cve_cards_html}
+        </div>
+
+        <!-- Perimeter Exposure & Ports -->
+        <div class="card">
+            <h2 class="section-heading">Perimeter Port & Service Discovery ({len(ports)})</h2>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Port / Protocol</th>
+                        <th>Service</th>
+                        <th>Detected Product / Version</th>
+                        <th>Banner / Extra</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {ports_rows_html}
+                </tbody>
+            </table>
+        </div>
+
+        <footer class="report-footer">
+            <p>Generated by <strong>{settings.REPORT_COMPANY_NAME}</strong> automated penetration testing framework.</p>
+            <p style="margin-top: 4px;">Confidential security document. Intended solely for authorized administrators.</p>
+        </footer>
+    </div>
+</body>
+</html>"""
+    return html
+
+
+
