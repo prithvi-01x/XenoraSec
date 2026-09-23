@@ -150,3 +150,63 @@ export function validateTarget(target: string): TargetValidationResult {
         error: 'Invalid target format. Enter a valid IPv4/IPv6, domain (e.g. example.com), or URL (https://...)' 
     };
 }
+
+export function getLogStageBadge(stage: string): { label: string; colorClass: string } {
+    switch (stage) {
+        case 'nmap':
+            return { label: 'PORT-SCAN', colorClass: 'bg-blue-500/10 text-blue-400 border-blue-500/30' };
+        case 'nuclei':
+            return { label: 'NUCLEI', colorClass: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30' };
+        case 'ai':
+            return { label: 'AI-ANALYSIS', colorClass: 'bg-purple-500/10 text-purple-400 border-purple-500/30' };
+        case 'completed':
+            return { label: 'DONE', colorClass: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' };
+        case 'failed':
+            return { label: 'FAILED', colorClass: 'bg-red-500/10 text-red-400 border-red-500/30' };
+        default:
+            return { label: 'INIT', colorClass: 'bg-gray-500/10 text-gray-400 border-gray-500/30' };
+    }
+}
+
+export function getLogLevelClass(level: string): string {
+    switch (level) {
+        case 'error':
+            return 'text-red-400 font-semibold';
+        case 'warn':
+            return 'text-yellow-400';
+        case 'success':
+            return 'text-emerald-400 font-medium';
+        default:
+            return 'text-gray-300';
+    }
+}
+
+export function formatLogTimestamp(timestamp: string): string {
+    try {
+        const d = new Date(timestamp);
+        return d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch {
+        return timestamp;
+    }
+}
+
+export function triggerFileDownload(blob: Blob, filename: string): void {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+}
+
+export async function copyToClipboard(text: string): Promise<boolean> {
+    try {
+        await navigator.clipboard.writeText(text);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
