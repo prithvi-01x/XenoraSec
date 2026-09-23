@@ -48,6 +48,9 @@ Traditional security scanners either overwhelm security teams with disconnected 
 2. **Hybrid Risk Intelligence**: Fuses a deterministic **Michaelis-Menten saturation model** (ensuring mathematically bounded, reproducible risk prioritization) with optional real-time **Groq Cloud LLM** contextual analysis.
 3. **Zero-Trust Input & Network Defense**: Native safeguards against SSRF, loopback bypasses, DNS rebinding, reverse proxy header spoofing, and rogue scans.
 4. **Reliable SQLite WAL / Postgres Concurrency**: Engineered for heavy polling and multi-scan execution without database lockups or zombie process leakage.
+5. **Live Terminal Streaming (SSE & WebSocket)**: Interactive console component directly inside the web UI streaming subprocess logs, port discoveries, and template executions in real-time with circular buffer reconnect replay.
+6. **Custom Scan Profiles & Nuclei Tag Selector**: Fine-grained scanning with pre-configured profiles (Quick Recon, Full Web Audit, Network Discovery, Custom), port range overrides, Nmap timing policies (T0-T5), and interactive Nuclei tag chips.
+7. **Professional Security Report Generation**: One-click export to publication-ready ReportLab PDF, interactive standalone HTML with print styling, GitHub-flavored Markdown, and raw machine-readable JSON in Technical or Executive mode.
 
 ### 🏗️ Architecture & Pipeline
 ```mermaid
@@ -323,6 +326,42 @@ curl -s "http://localhost:8000/api/scan/results/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3d
 #### 3. Retry a Partial or Failed Scan
 ```bash
 curl -X POST "http://localhost:8000/api/scan/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d/retry"
+```
+
+#### 4. Live Terminal Streaming (SSE & WebSocket)
+Stream backend scanner stdout, port discoveries, and vulnerability matches in real-time:
+```bash
+# Server-Sent Events (SSE)
+curl -N "http://localhost:8000/api/scan/{scan_id}/stream"
+
+# WebSocket live console stream
+wscat -c "ws://localhost:8000/api/scan/{scan_id}/ws"
+```
+
+#### 5. Generate & Download Professional Reports
+Export publication-ready security assessments in PDF, HTML, Markdown, or JSON:
+```bash
+# Publication PDF report (ReportLab)
+curl -O -J "http://localhost:8000/api/scan/{scan_id}/report?format=pdf&report_type=technical"
+
+# Interactive offline HTML report with print-to-PDF styles
+curl -O -J "http://localhost:8000/api/scan/{scan_id}/report?format=html&report_type=technical"
+
+# GitHub-flavored Markdown report
+curl -O -J "http://localhost:8000/api/scan/{scan_id}/report?format=markdown&report_type=executive"
+
+# Machine-readable JSON export
+curl -O -J "http://localhost:8000/api/scan/{scan_id}/report?format=json&report_type=technical"
+```
+
+#### 6. Scan Profiles & Nuclei Template Catalog
+Query built-in scan presets (Quick Recon, Full Web Audit, Network Discovery, Custom) and template tags:
+```bash
+# List available scan profiles
+curl "http://localhost:8000/api/scan/profiles"
+
+# List available Nuclei template categories and tags
+curl "http://localhost:8000/api/scan/templates"
 ```
 
 ---
