@@ -25,11 +25,13 @@ class NmapScanner:
         self,
         timeout: Optional[int] = None,
         timing: Optional[str] = None,
-        max_retries: Optional[int] = None
+        max_retries: Optional[int] = None,
+        port_range: Optional[str] = None
     ):
         self.timeout = timeout or settings.NMAP_TIMEOUT
         self.timing = timing or settings.NMAP_TIMING
         self.max_retries = max_retries or settings.NMAP_MAX_RETRIES
+        self.port_range = port_range
     
     async def scan(self, target: str) -> Dict[str, Any]:
         """
@@ -102,8 +104,10 @@ class NmapScanner:
             "-oX", "-",  # XML output to stdout
             "--max-retries", str(self.max_retries),
             "--host-timeout", f"{self.timeout}s",
-            target
         ]
+        if self.port_range:
+            command.extend(["-p", str(self.port_range)])
+        command.append(target)
         
         process = None
         try:
@@ -289,15 +293,23 @@ class NmapScanner:
         }
 
 
-async def run_nmap_scan(target: str) -> Dict[str, Any]:
+async def run_nmap_scan(
+    target: str,
+    timeout: Optional[int] = None,
+    timing: Optional[str] = None,
+    port_range: Optional[str] = None
+) -> Dict[str, Any]:
     """
     Convenience function to run Nmap scan.
     
     Args:
         target: Target hostname or IP (NOT URL)
+        timeout: Optional timeout in seconds
+        timing: Optional timing template (T1-T5)
+        port_range: Optional port range (e.g. '1-1000', '80,443')
     
     Returns:
         Scan results dictionary
     """
-    scanner = NmapScanner()
+    scanner = NmapScanner(timeout=timeout, timing=timing, port_range=port_range)
     return await scanner.scan(target)
