@@ -3,6 +3,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Request, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import uuid4
+from typing import Optional, Any, Dict, List
 import asyncio
 
 from app.schemas.scan import (
@@ -104,31 +105,52 @@ async def start_scan(
             detail=f"Maximum concurrent scans ({settings.MAX_CONCURRENT_SCANS}) reached. Please try again later."
         )
 
+    # Extract scan profile and options
+    profile = (
+        payload.scan_profile.value
+        if hasattr(payload.scan_profile, "value")
+        else (payload.scan_profile or payload.scan_mode or "quick")
+    )
+    scan_opts = payload.options.model_dump() if payload.options else None
+
     # Generate scan ID
     scan_id = str(uuid4())
     
     # Create scan record
-    scan = await create_scan(db, scan_id, payload.target)
+    scan = await create_scan(
+        db,
+        scan_id,
+        payload.target,
+        scan_profile=profile,
+        scan_options=scan_opts
+    )
     
     if not scan:
         raise HTTPException(status_code=500, detail="Failed to create scan record")
     
     # Fix 8: Hold a reference to the task so it can't be garbage collected
     task = asyncio.create_task(
-        _run_and_store_scan(scan_id, payload.target, metadata)
+        _run_and_store_scan(
+            scan_id,
+            payload.target,
+            metadata,
+            scan_profile=profile,
+            options=payload.options
+        )
     )
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
     
     logger.info(
-        f"Scan started: {scan_id} for {payload.target}",
-        extra={"scan_id": scan_id, "target": payload.target}
+        f"Scan started: {scan_id} for {payload.target} (profile={profile})",
+        extra={"scan_id": scan_id, "target": payload.target, "profile": profile}
     )
     
     return ScanCreateResponse(
         scan_id=scan_id,
         target=payload.target,
-        status=ScanStatus.RUNNING
+        status=ScanStatus.RUNNING,
+        scan_profile=profile
     )
 
 
@@ -150,6 +172,8 @@ def _build_scan_response(scan) -> dict:
         "scan_id": scan.scan_id,
         "target": scan.target,
         "status": scan.status,
+        "scan_profile": scan.scan_profile or "quick",
+        "scan_options": scan.scan_options,
         "risk_score": scan.risk_score,
         "duration": scan.duration,
         "summary": summary,
@@ -225,6 +249,7 @@ async def get_history(
             "scan_id": scan.scan_id,
             "target": scan.target,
             "status": scan.status,
+            "scan_profile": scan.scan_profile or "quick",
             "risk_score": scan.risk_score,
             "created_at": scan.created_at,
             "updated_at": scan.updated_at,
@@ -296,15 +321,31 @@ async def retry_scan(
     if not is_valid:
         raise HTTPException(status_code=400, detail=f"Target no longer valid: {error_msg}")
     
-    # Create new scan record with parent reference
-    new_scan = await create_scan(db, new_scan_id, original_scan.target, parent_scan_id=scan_id)
+    # Create new scan record with parent reference and original profile/options
+    new_scan = await create_scan(
+        db,
+        new_scan_id,
+        original_scan.target,
+        parent_scan_id=scan_id,
+        scan_profile=original_scan.scan_profile or "quick",
+        scan_options=original_scan.scan_options
+    )
     
     if not new_scan:
         raise HTTPException(status_code=500, detail="Failed to create retry scan")
     
+    from app.schemas.scan import ScanOptions
+    retry_options = ScanOptions(**original_scan.scan_options) if original_scan.scan_options else None
+    
     # Fix 8: Track retry task reference too
     task = asyncio.create_task(
-        _run_and_store_scan(new_scan_id, original_scan.target, metadata)
+        _run_and_store_scan(
+            new_scan_id,
+            original_scan.target,
+            metadata,
+            scan_profile=original_scan.scan_profile or "quick",
+            options=retry_options
+        )
     )
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
@@ -318,6 +359,7 @@ async def retry_scan(
         scan_id=new_scan_id,
         target=original_scan.target,
         status=ScanStatus.RUNNING,
+        scan_profile=original_scan.scan_profile or "quick",
         message=f"Retry scan started (original: {scan_id})"
     )
 
@@ -455,7 +497,13 @@ async def get_templates():
 
 # ==================== BACKGROUND SCAN TASK ====================
 
-async def _run_and_store_scan(scan_id: str, target: str, metadata: dict):
+async def _run_and_store_scan(
+    scan_id: str,
+    target: str,
+    metadata: dict,
+    scan_profile: Optional[str] = "quick",
+    options: Optional[Any] = None
+):
     """
     Background task to run scan and store results.
     
@@ -468,8 +516,8 @@ async def _run_and_store_scan(scan_id: str, target: str, metadata: dict):
     async with AsyncSessionLocal() as db:
         try:
             logger.info(
-                f"Background scan executing: {scan_id}",
-                extra={"scan_id": scan_id, "target": target}
+                f"Background scan executing: {scan_id} (profile={scan_profile})",
+                extra={"scan_id": scan_id, "target": target, "profile": scan_profile}
             )
 
             # Fix 14: Register this task so it can be cancelled via the cancel endpoint
@@ -477,8 +525,14 @@ async def _run_and_store_scan(scan_id: str, target: str, metadata: dict):
             if current_task:
                 _running_scan_tasks[scan_id] = current_task
             
-            # Run the full scan
-            result = await run_full_scan(target, metadata, parallel=True)
+            # Run the full scan with profile and options
+            result = await run_full_scan(
+                target,
+                metadata,
+                parallel=True,
+                scan_profile=scan_profile,
+                options=options
+            )
             
             # Determine final status based on result
             final_status = result.get("status", ScanStatus.COMPLETED.value)

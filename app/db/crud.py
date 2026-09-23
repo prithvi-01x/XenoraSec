@@ -20,7 +20,9 @@ async def create_scan(
     db: AsyncSession,
     scan_id: str,
     target: str,
-    parent_scan_id: Optional[str] = None
+    parent_scan_id: Optional[str] = None,
+    scan_profile: Optional[str] = "quick",
+    scan_options: Optional[dict] = None
 ) -> Optional[ScanResult]:
     """
     Create a new scan record in the database.
@@ -30,6 +32,8 @@ async def create_scan(
         scan_id: Unique scan identifier (UUID)
         target: Target hostname/IP/URL
         parent_scan_id: Optional parent scan ID for retries
+        scan_profile: Active scan profile ('quick', 'full', 'network', 'custom')
+        scan_options: Serialized scan options and overrides
     
     Returns:
         ScanResult object or None if creation fails
@@ -42,6 +46,8 @@ async def create_scan(
             risk_score=0.0,
             result=None,
             parent_scan_id=parent_scan_id,
+            scan_profile=scan_profile or "quick",
+            scan_options=scan_options,
         )
         
         db.add(scan)
@@ -94,6 +100,10 @@ async def update_scan_result(
         scan.status = status
         scan.risk_score = risk_score
         scan.duration = duration
+        if "scan_profile" in result and result["scan_profile"]:
+            scan.scan_profile = result["scan_profile"]
+        if "scan_options" in result and result["scan_options"] is not None:
+            scan.scan_options = result["scan_options"]
         scan.updated_at = datetime.now(UTC)
         
         await db.commit()
