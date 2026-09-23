@@ -114,6 +114,24 @@ def generate_executive_summary(scan: Dict[str, Any]) -> ExecutiveSummary:
     info_count = dist.get("info", 0)
     ports_count = nmap.get("total_ports", 0)
 
+    # Fallback to direct raw vulnerability/port counting if summary dictionary is omitted
+    if crit_count == 0 and high_count == 0 and nuclei.get("vulnerabilities"):
+        for v in nuclei.get("vulnerabilities", []):
+            sev = (v.get("severity") or "info").lower()
+            if sev == "critical":
+                crit_count += 1
+            elif sev == "high":
+                high_count += 1
+            elif sev == "medium":
+                med_count += 1
+            elif sev == "low":
+                low_count += 1
+            elif sev == "info":
+                info_count += 1
+
+    if ports_count == 0 and nmap.get("ports"):
+        ports_count = len(nmap.get("ports", []))
+
     # Risk categorization
     if risk_score >= 8.0 or crit_count > 0:
         risk_category = "Critical Risk"
@@ -188,6 +206,7 @@ def generate_json_report(
         author="XenoraSec Automated Engine",
         organization=settings.REPORT_COMPANY_NAME,
         risk_score=risk_score,
+        scan_profile=scan.get("scan_profile", "quick"),
     )
 
     report_payload: Dict[str, Any] = {

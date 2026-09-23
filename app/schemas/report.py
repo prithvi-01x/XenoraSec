@@ -31,6 +31,7 @@ class ReportMetadata(BaseModel):
     author: str = "XenoraSec Security Engine"
     organization: str = "XenoraSec"
     risk_score: float = 0.0
+    scan_profile: Optional[str] = "quick"
 
 
 class ExecutiveSummary(BaseModel):

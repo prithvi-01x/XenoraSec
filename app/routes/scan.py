@@ -424,7 +424,7 @@ async def download_scan_report(
     elif format == ReportFormat.JSON:
         json_report = generate_json_report(scan_data, report_type)
         return Response(
-            content=json_report.model_dump_json(indent=2),
+            content=json_report,
             media_type="application/json; charset=utf-8",
             headers={"Content-Disposition": f'attachment; filename="{filename_prefix}.json"'}
         )
