@@ -382,20 +382,7 @@ async def download_scan_report(
     if not scan_record:
         raise HTTPException(status_code=404, detail="Scan not found")
 
-    scan_data = {
-        "scan_id": scan_record.scan_id,
-        "target": scan_record.target,
-        "status": scan_record.status,
-        "scan_profile": scan_record.scan_profile or "quick",
-        "risk_score": scan_record.risk_score or 0.0,
-        "created_at": scan_record.created_at,
-        "updated_at": scan_record.updated_at,
-        "duration": scan_record.duration,
-        "nmap": scan_record.nmap_result or {},
-        "nuclei": scan_record.nuclei_result or {},
-        "ai_analysis": scan_record.ai_analysis or {},
-        "scan_options": scan_record.scan_options or {}
-    }
+    scan_data = _build_scan_response(scan_record)
 
     clean_target = scan_record.target.replace("://", "_").replace("/", "_").replace(":", "_")
     filename_prefix = f"xenorasec-report-{clean_target}-{report_type.value}"
