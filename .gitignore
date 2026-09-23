@@ -23,6 +23,10 @@ build/
 *.sqlite3
 scans.db
 scans.db-journal
+scans.db-wal
+scans.db-shm
+*.db-wal
+*.db-shm
 
 # =========================
 # Environment variables
