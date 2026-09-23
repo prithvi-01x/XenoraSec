@@ -1,6 +1,6 @@
 # app/routes/scan.py
 
-from fastapi import APIRouter, HTTPException, Depends, Request, Query
+from fastapi import APIRouter, HTTPException, Depends, Request, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import uuid4
@@ -276,6 +276,67 @@ async def stream_scan_logs(
             "X-Accel-Buffering": "no"
         }
     )
+
+
+# ==================== LIVE TERMINAL STREAMING (WEBSOCKET) ====================
+
+@router.websocket("/{scan_id}/ws")
+async def websocket_scan_logs(websocket: WebSocket, scan_id: str):
+    """
+    WebSocket endpoint for bidirectional real-time scan terminal streaming.
+    """
+    await websocket.accept()
+    
+    try:
+        sanitized_id = sanitize_scan_id(scan_id)
+    except (ValueError, TargetValidationError):
+        await websocket.send_json({"event": "error", "message": "Invalid scan_id format"})
+        await websocket.close(code=1008)
+        return
+
+    # 1. Send all buffered historical logs
+    history = scan_event_bus.get_history(sanitized_id)
+    for msg in history:
+        await websocket.send_json({
+            "event": msg.event,
+            "data": msg.data.model_dump(mode="json")
+        })
+
+    # 2. Subscribe to live queue
+    queue = await scan_event_bus.subscribe(sanitized_id)
+    
+    async def listen_client():
+        """Listen for client pings or control messages"""
+        try:
+            while True:
+                data = await websocket.receive_text()
+                if data == "ping":
+                    await websocket.send_text("pong")
+        except (WebSocketDisconnect, asyncio.CancelledError):
+            pass
+
+    client_task = asyncio.create_task(listen_client())
+
+    try:
+        while True:
+            msg = await queue.get()
+            await websocket.send_json({
+                "event": msg.event,
+                "data": msg.data.model_dump(mode="json")
+            })
+            if msg.event == "done":
+                break
+    except (WebSocketDisconnect, asyncio.CancelledError):
+        pass
+    except Exception as e:
+        logger.debug(f"WebSocket streaming error for scan {sanitized_id}: {e}")
+    finally:
+        client_task.cancel()
+        await scan_event_bus.unsubscribe(sanitized_id, queue)
+        try:
+            await websocket.close()
+        except Exception:
+            pass
 
 
 # ==================== SCAN HISTORY ====================
