@@ -1,7 +1,7 @@
 # app/routes/scan.py
 
 from fastapi import APIRouter, HTTPException, Depends, Request, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import uuid4
 from typing import Optional, Any, Dict, List
@@ -29,6 +29,13 @@ from app.db.crud import (
 from app.services.scanner_service import run_full_scan, get_scan_queue_info
 from app.services.profile_service import get_available_profiles, get_available_tags, resolve_scan_options
 from app.services.event_bus import scan_event_bus
+from app.schemas.report import ReportFormat, ReportType
+from app.services.report_service import (
+    generate_json_report,
+    generate_markdown_report,
+    generate_html_report,
+    generate_pdf_report,
+)
 from app.core.security import validate_target, sanitize_scan_id, TargetValidationError
 from app.core.rate_limit import check_rate_limit
 from app.core.logging import get_logger
@@ -345,6 +352,84 @@ async def websocket_scan_logs(websocket: WebSocket, scan_id: str):
             await websocket.close()
         except Exception:
             pass
+
+
+# ==================== REPORT DOWNLOAD ====================
+
+@router.get(
+    "/{scan_id}/report",
+    responses={
+        400: {"model": ErrorResponse},
+        404: {"model": ErrorResponse}
+    }
+)
+async def download_scan_report(
+    scan_id: str,
+    format: ReportFormat = Query(ReportFormat.HTML, description="Report format (html, pdf, markdown, json)"),
+    report_type: ReportType = Query(ReportType.TECHNICAL, description="Report audience (technical, executive)"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Generate and download a comprehensive security report for a completed scan.
+    Supports HTML, PDF, Markdown, and JSON formats in Executive or Technical mode.
+    """
+    try:
+        scan_id = sanitize_scan_id(scan_id)
+    except (ValueError, TargetValidationError):
+        raise HTTPException(status_code=400, detail="Invalid scan_id format")
+
+    scan_record = await get_scan(db, scan_id)
+    if not scan_record:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    scan_data = {
+        "scan_id": scan_record.scan_id,
+        "target": scan_record.target,
+        "status": scan_record.status,
+        "scan_profile": scan_record.scan_profile or "quick",
+        "risk_score": scan_record.risk_score or 0.0,
+        "created_at": scan_record.created_at,
+        "updated_at": scan_record.updated_at,
+        "duration": scan_record.duration,
+        "nmap": scan_record.nmap_result or {},
+        "nuclei": scan_record.nuclei_result or {},
+        "ai_analysis": scan_record.ai_analysis or {},
+        "scan_options": scan_record.scan_options or {}
+    }
+
+    clean_target = scan_record.target.replace("://", "_").replace("/", "_").replace(":", "_")
+    filename_prefix = f"xenorasec-report-{clean_target}-{report_type.value}"
+
+    if format == ReportFormat.PDF:
+        pdf_bytes = generate_pdf_report(scan_data, report_type)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename_prefix}.pdf"'}
+        )
+    elif format == ReportFormat.HTML:
+        html_content = generate_html_report(scan_data, report_type)
+        return Response(
+            content=html_content,
+            media_type="text/html; charset=utf-8",
+            headers={"Content-Disposition": f'inline; filename="{filename_prefix}.html"'}
+        )
+    elif format == ReportFormat.MARKDOWN:
+        md_content = generate_markdown_report(scan_data, report_type)
+        return Response(
+            content=md_content,
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename_prefix}.md"'}
+        )
+    elif format == ReportFormat.JSON:
+        json_report = generate_json_report(scan_data, report_type)
+        return Response(
+            content=json_report.model_dump_json(indent=2),
+            media_type="application/json; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename_prefix}.json"'}
+        )
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {format}")
 
 
 # ==================== SCAN HISTORY ====================
