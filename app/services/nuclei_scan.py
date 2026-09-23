@@ -27,7 +27,10 @@ class NucleiScanner:
         timeout: Optional[int] = None,
         rate_limit: Optional[int] = None,
         severity_filter: Optional[List[str]] = None,
-        template_path: Optional[str] = None
+        template_path: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        templates: Optional[List[str]] = None,
+        concurrency: Optional[int] = None,
     ):
         self.timeout = timeout or settings.NUCLEI_TIMEOUT
         self.rate_limit = rate_limit or settings.NUCLEI_RATE_LIMIT
@@ -36,6 +39,9 @@ class NucleiScanner:
         self.max_vulnerabilities = settings.MAX_VULNERABILITIES
         self.severity_filter = severity_filter
         self.template_path = template_path
+        self.tags = tags
+        self.templates = templates
+        self.concurrency = concurrency
     
     async def scan(self, target: str) -> Dict[str, Any]:
         """
@@ -291,8 +297,20 @@ class NucleiScanner:
         if self.severity_filter:
             command.extend(["-severity", ",".join(self.severity_filter)])
         
-        if self.template_path:
+        if self.tags:
+            cleaned_tags = [t.strip() for t in self.tags if t and t.strip()]
+            if cleaned_tags:
+                command.extend(["-tags", ",".join(cleaned_tags)])
+
+        if self.templates:
+            for tmpl in self.templates:
+                if tmpl and tmpl.strip():
+                    command.extend(["-t", tmpl.strip()])
+        elif self.template_path:
             command.extend(["-t", self.template_path])
+        
+        if self.concurrency:
+            command.extend(["-c", str(self.concurrency)])
         
         return command
     
@@ -387,7 +405,11 @@ class NucleiScanner:
 async def run_nuclei_scan(
     target: str,
     timeout: Optional[int] = None,
-    severity_filter: Optional[List[str]] = None
+    severity_filter: Optional[List[str]] = None,
+    tags: Optional[List[str]] = None,
+    templates: Optional[List[str]] = None,
+    rate_limit: Optional[int] = None,
+    concurrency: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Convenience function to run Nuclei scan.
@@ -396,9 +418,20 @@ async def run_nuclei_scan(
         target: Full URL with scheme
         timeout: Optional custom timeout
         severity_filter: Optional severity filter
+        tags: Optional list of Nuclei tags (e.g. ['cve', 'rce'])
+        templates: Optional list of specific template paths/IDs
+        rate_limit: Optional request rate limit
+        concurrency: Optional concurrent template executions
     
     Returns:
         Scan results dictionary
     """
-    scanner = NucleiScanner(timeout=timeout, severity_filter=severity_filter)
+    scanner = NucleiScanner(
+        timeout=timeout,
+        severity_filter=severity_filter,
+        tags=tags,
+        templates=templates,
+        rate_limit=rate_limit,
+        concurrency=concurrency,
+    )
     return await scanner.scan(target)
