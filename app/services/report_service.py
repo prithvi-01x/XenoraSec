@@ -197,3 +197,146 @@ def generate_json_report(
 
     return json.dumps(report_payload, indent=2, default=str)
 
+
+def generate_markdown_report(
+    scan: Dict[str, Any],
+    report_type: ReportType = ReportType.TECHNICAL
+) -> str:
+    """
+    Generate professional Markdown report formatted with GitHub-flavored markdown.
+    """
+    target = scan.get("target", "Target Host")
+    scan_id = scan.get("scan_id", "unknown-scan")
+    risk_score = float(scan.get("risk_score", 0.0))
+    scan_profile = scan.get("scan_profile", "quick")
+    exec_summary = generate_executive_summary(scan)
+
+    nuclei_res = scan.get("nuclei", {}) if isinstance(scan.get("nuclei"), dict) else {}
+    nmap_res = scan.get("nmap", {}) if isinstance(scan.get("nmap"), dict) else {}
+    cves = extract_cve_details(nuclei_res, target)
+    ports = nmap_res.get("ports", [])
+
+    report_title = "Executive Security Posture Brief" if report_type == ReportType.EXECUTIVE else "Technical Vulnerability Assessment Report"
+
+    lines: List[str] = [
+        f"# {settings.REPORT_COMPANY_NAME} — {report_title}",
+        "",
+        f"> **Assessment Date:** {exec_summary.scan_date.strftime('%Y-%m-%d %H:%M:%S UTC')}  ",
+        f"> **Target System:** `{target}`  ",
+        f"> **Scan ID:** `{scan_id}`  ",
+        f"> **Scan Profile:** `{scan_profile.upper()}`  ",
+        f"> **Overall Risk Score:** **{risk_score:.1f} / 10.0** — *{exec_summary.risk_category}*",
+        "",
+        "---",
+        "",
+        "## 1. Executive Summary",
+        "",
+        f"An automated vulnerability assessment was conducted against `{target}` utilizing XenoraSec's multi-engine security scanner. "
+        f"The system concluded with an overall risk classification of **{exec_summary.risk_category}** (Score: {risk_score:.1f}/10.0).",
+        "",
+        "### Key Findings",
+        ""
+    ]
+
+    for finding in exec_summary.key_findings:
+        lines.append(f"- {finding}")
+    lines.append("")
+
+    lines.extend([
+        "### Severity Distribution",
+        "",
+        "| Severity Level | Finding Count | Priority Status |",
+        "| :--- | :--- | :--- |",
+        f"| **Critical** | {exec_summary.critical_count} | {'Action Required Immediately' if exec_summary.critical_count > 0 else 'Acceptable'} |",
+        f"| **High** | {exec_summary.high_count} | {'Urgent Remediation' if exec_summary.high_count > 0 else 'Acceptable'} |",
+        f"| **Medium** | {exec_summary.medium_count} | {'Routine Patching' if exec_summary.medium_count > 0 else 'Acceptable'} |",
+        f"| **Low** | {exec_summary.low_count} | Informational / Defense-in-Depth |",
+        f"| **Info** | {exec_summary.info_count} | Perimeter Reconnaissance |",
+        "",
+        "### Strategic Remediation Recommendations",
+        ""
+    ])
+
+    for rec in exec_summary.strategic_recommendations:
+        lines.append(f"1. {rec}")
+    lines.append("")
+
+    # If Technical Report, include detailed CVE breakdowns, Ports, and Vulnerability Match details
+    if report_type == ReportType.TECHNICAL:
+        lines.extend([
+            "---",
+            "",
+            "## 2. Detailed Vulnerability & CVE Findings",
+            ""
+        ])
+
+        if not cves:
+            lines.append("*No high or critical vulnerabilities were identified during this assessment.*")
+            lines.append("")
+        else:
+            for idx, cve in enumerate(cves, 1):
+                sev_badge = cve.severity.upper()
+                cvss_str = f" (CVSS: {cve.cvss_score})" if cve.cvss_score else ""
+                lines.extend([
+                    f"### 2.{idx} [{sev_badge}] {cve.title}{cvss_str}",
+                    "",
+                    f"- **Identifier:** `{cve.cve_id}`",
+                    f"- **Severity:** `{cve.severity.upper()}`",
+                    f"- **Affected Location:** `{cve.affected_target}`",
+                    f"- **CWE Classification:** {cve.cwe_id or 'N/A'}",
+                    "",
+                    "**Description:**",
+                    f"{cve.description}",
+                    "",
+                    "**Remediation Guidance:**",
+                    f"> {cve.remediation_advice}",
+                    ""
+                ])
+
+                if cve.references:
+                    lines.append("**Advisory References:**")
+                    for ref in cve.references:
+                        lines.append(f"- [{ref}]({ref})")
+                    lines.append("")
+
+        lines.extend([
+            "---",
+            "",
+            "## 3. Network Perimeter & Open Ports",
+            "",
+            f"Port discovery identified **{len(ports)}** open services on `{target}`.",
+            "",
+            "| Port / Protocol | Service | Product / Version | Extra Info |",
+            "| :--- | :--- | :--- | :--- |"
+        ])
+
+        if not ports:
+            lines.append("| *None* | *No standard open ports identified* | - | - |")
+        else:
+            for p in ports:
+                port_str = f"{p.get('port')}/{p.get('protocol', 'tcp')}"
+                srv = p.get('service') or 'unknown'
+                prod = f"{p.get('product', '')} {p.get('version', '')}".strip() or 'unidentified'
+                extra = p.get('extrainfo') or '-'
+                lines.append(f"| `{port_str}` | {srv} | {prod} | {extra} |")
+
+        lines.extend([
+            "",
+            "---",
+            "",
+            "## 4. Assessment Methodology & Tools",
+            "",
+            "- **Service & Port Discovery:** Nmap Connect Engine with service fingerprinting (`-sV`).",
+            "- **Vulnerability Validation:** Nuclei Template Engine with custom tag rulesets.",
+            "- **Risk Analysis:** AI-assisted contextual impact and CVSS-based scoring algorithm.",
+            ""
+        ])
+
+    lines.extend([
+        "---",
+        f"*Report generated automatically by {settings.REPORT_COMPANY_NAME}. Strictly confidential.*"
+    ])
+
+    return "\n".join(lines)
+
+
