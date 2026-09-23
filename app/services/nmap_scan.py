@@ -7,6 +7,8 @@ from typing import Dict, List, Any, Optional
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.schemas.scan import ScanStatus
+from app.schemas.stream import StreamLogLevel, StreamStage
+from app.services.event_bus import scan_event_bus
 
 logger = get_logger(__name__)
 
@@ -18,7 +20,7 @@ DEFAULT_TIMING_FALLBACK = "T4"  # Default timing if not set
 
 class NmapScanner:
     """
-    Async Nmap scanner with configurable settings.
+    Async Nmap scanner with configurable settings and live event streaming.
     """
     
     def __init__(
@@ -26,12 +28,14 @@ class NmapScanner:
         timeout: Optional[int] = None,
         timing: Optional[str] = None,
         max_retries: Optional[int] = None,
-        port_range: Optional[str] = None
+        port_range: Optional[str] = None,
+        scan_id: Optional[str] = None
     ):
         self.timeout = timeout or settings.NMAP_TIMEOUT
         self.timing = timing or settings.NMAP_TIMING
         self.max_retries = max_retries or settings.NMAP_MAX_RETRIES
         self.port_range = port_range
+        self.scan_id = scan_id
     
     async def scan(self, target: str) -> Dict[str, Any]:
         """
@@ -51,28 +55,66 @@ class NmapScanner:
             self.timing = LOCALHOST_TIMING
             logger.debug("Using aggressive timing for localhost")
         
+        if self.scan_id:
+            await scan_event_bus.emit_log(
+                self.scan_id,
+                f"Starting Nmap port discovery on {target} (ports: {self.port_range or '1-1000'}, timing: {self.timing})",
+                stage=StreamStage.NMAP,
+                level=StreamLogLevel.INFO
+            )
+        
         for attempt in range(self.max_retries):
             try:
                 result = await self._execute_scan(target)
                 
                 if result.get("status") == ScanStatus.COMPLETED.value:
+                    port_count = result.get("total_ports", 0)
                     logger.info(
-                        f"Nmap scan completed: {target} | ports={result.get('total_ports', 0)}",
+                        f"Nmap scan completed: {target} | ports={port_count}",
                         extra={"target": target}
                     )
+                    if self.scan_id:
+                        await scan_event_bus.emit_log(
+                            self.scan_id,
+                            f"Nmap port discovery completed for {target}: {port_count} open ports found",
+                            stage=StreamStage.NMAP,
+                            level=StreamLogLevel.SUCCESS,
+                            details={"total_ports": port_count}
+                        )
                     return result
                 
                 # Fix 3: Never retry a timeout — it will just time out again
                 if result.get("status") == ScanStatus.TIMEOUT.value:
                     logger.warning(f"Nmap timed out for {target}, not retrying")
+                    if self.scan_id:
+                        await scan_event_bus.emit_log(
+                            self.scan_id,
+                            f"Nmap timed out after {self.timeout}s on {target}",
+                            stage=StreamStage.NMAP,
+                            level=StreamLogLevel.WARNING
+                        )
                     return result
                 
                 if attempt < self.max_retries - 1:
                     logger.warning(f"Nmap retry {attempt + 1}/{self.max_retries} for {target}")
+                    if self.scan_id:
+                        await scan_event_bus.emit_log(
+                            self.scan_id,
+                            f"Nmap retry {attempt + 1}/{self.max_retries} for {target}",
+                            stage=StreamStage.NMAP,
+                            level=StreamLogLevel.WARNING
+                        )
                     await asyncio.sleep(RETRY_DELAY_SECONDS)
             
             except Exception as e:
                 logger.error(f"Nmap scan exception (attempt {attempt + 1}): {e}")
+                if self.scan_id:
+                    await scan_event_bus.emit_log(
+                        self.scan_id,
+                        f"Nmap error on attempt {attempt + 1}: {e}",
+                        stage=StreamStage.NMAP,
+                        level=StreamLogLevel.ERROR
+                    )
                 if attempt == self.max_retries - 1:
                     return {
                         "status": ScanStatus.FAILED.value,
@@ -83,6 +125,13 @@ class NmapScanner:
                     }
         
         # If we reach here, all retries failed without returning
+        if self.scan_id:
+            await scan_event_bus.emit_log(
+                self.scan_id,
+                f"Nmap scan failed: all retry attempts failed for {target}",
+                stage=StreamStage.NMAP,
+                level=StreamLogLevel.ERROR
+            )
         return {
             "status": ScanStatus.FAILED.value,
             "error": "All retry attempts failed without completing scan",
@@ -297,7 +346,8 @@ async def run_nmap_scan(
     target: str,
     timeout: Optional[int] = None,
     timing: Optional[str] = None,
-    port_range: Optional[str] = None
+    port_range: Optional[str] = None,
+    scan_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Convenience function to run Nmap scan.
@@ -307,9 +357,15 @@ async def run_nmap_scan(
         timeout: Optional timeout in seconds
         timing: Optional timing template (T1-T5)
         port_range: Optional port range (e.g. '1-1000', '80,443')
+        scan_id: Optional scan ID for streaming logs
     
     Returns:
         Scan results dictionary
     """
-    scanner = NmapScanner(timeout=timeout, timing=timing, port_range=port_range)
+    scanner = NmapScanner(
+        timeout=timeout,
+        timing=timing,
+        port_range=port_range,
+        scan_id=scan_id
+    )
     return await scanner.scan(target)
