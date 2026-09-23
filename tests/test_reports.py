@@ -170,3 +170,32 @@ def test_reports_with_empty_scan():
 
     pdf = generate_pdf_report(empty_scan, ReportType.TECHNICAL)
     assert pdf.startswith(b"%PDF-")
+
+
+def test_executive_summary_does_not_double_count():
+    # When scan has 0 critical and 0 high findings, medium/low counts must not be double counted
+    scan = {
+        "target": "example.com",
+        "summary": {
+            "critical_count": 0,
+            "high_count": 0,
+            "severity_distribution": {"critical": 0, "high": 0, "medium": 3, "low": 2, "info": 1}
+        },
+        "nuclei": {
+            "vulnerabilities": [
+                {"severity": "medium", "name": "M1"},
+                {"severity": "medium", "name": "M2"},
+                {"severity": "medium", "name": "M3"},
+                {"severity": "low", "name": "L1"},
+                {"severity": "low", "name": "L2"},
+                {"severity": "info", "name": "I1"},
+            ]
+        }
+    }
+    summary = generate_executive_summary(scan)
+    assert summary.critical_count == 0
+    assert summary.high_count == 0
+    assert summary.medium_count == 3
+    assert summary.low_count == 2
+    assert summary.info_count == 1
+
