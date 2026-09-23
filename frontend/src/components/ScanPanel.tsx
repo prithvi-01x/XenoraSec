@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import { 
     Play, 
     AlertCircle, 
@@ -95,13 +96,18 @@ export function ScanPanel() {
             });
             // Navigate to scan results page
             navigate(`/scan/${result.scan_id}`);
-        } catch (err: any) {
-            if (err.response?.status === 429) {
-                setSubmitError('Rate limit exceeded. Please wait before starting another scan.');
-            } else if (err.response?.status === 503) {
-                setSubmitError('Scan queue is full. Please try again later.');
+        } catch (err: unknown) {
+            if (axios.isAxiosError(err)) {
+                if (err.response?.status === 429) {
+                    setSubmitError('Rate limit exceeded. Please wait before starting another scan.');
+                } else if (err.response?.status === 503) {
+                    setSubmitError('Scan queue is full. Please try again later.');
+                } else {
+                    const detail = (err.response?.data as { detail?: string } | undefined)?.detail;
+                    setSubmitError(detail || 'Failed to start scan');
+                }
             } else {
-                setSubmitError(err.response?.data?.detail || 'Failed to start scan');
+                setSubmitError('Failed to start scan');
             }
         }
     };

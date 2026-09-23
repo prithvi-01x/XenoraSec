@@ -140,7 +140,7 @@ export function validateTarget(target: string): TargetValidationResult {
         return { valid: false, error: 'Domain name cannot exceed 253 characters' };
     }
 
-    const domainPattern = /^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
+    const domainPattern = /^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
     if (domainPattern.test(trimmed)) {
         return { valid: true, targetType: 'domain' };
     }

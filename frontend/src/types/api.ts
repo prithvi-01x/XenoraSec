@@ -102,7 +102,7 @@ export interface ScanLogEvent {
     stage: 'init' | 'nmap' | 'nuclei' | 'ai' | 'completed' | 'failed';
     level: 'info' | 'warn' | 'error' | 'success';
     message: string;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
 }
 
 export interface ScanCreateRequest {
@@ -146,7 +146,9 @@ export interface QueueInfo {
 export interface HealthStatus {
     status: string;
     version: string;
-    uptime: number;
+    uptime?: number;
+    database?: string;
+    timestamp?: string;
 }
 
 export interface DashboardStats {
