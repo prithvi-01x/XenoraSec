@@ -1,20 +1,67 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Play, AlertCircle, CheckCircle2, Globe, Server, Link2 } from 'lucide-react';
-import { useStartScan } from '../hooks/useApi';
+import { 
+    Play, 
+    AlertCircle, 
+    CheckCircle2, 
+    Globe, 
+    Server, 
+    Link2, 
+    ChevronDown, 
+    ChevronUp, 
+    Tag, 
+    Sliders 
+} from 'lucide-react';
+import { useStartScan, useScanTemplates } from '../hooks/useApi';
 import { validateTarget } from '../utils/helpers';
 import { LoadingSpinner } from '../components/LoadingSpinner';
+import { ScanProfileSelector } from './ScanProfileSelector';
+import type { ScanProfile, ScanTiming, ScanOptions } from '../types/api';
+
+const DEFAULT_POPULAR_TAGS = [
+    { id: 'cve', label: 'CVE Database', category: 'cve' },
+    { id: 'rce', label: 'Remote Code Exec', category: 'vulnerability' },
+    { id: 'misconfig', label: 'Misconfigurations', category: 'misconfig' },
+    { id: 'exposure', label: 'Information Exposure', category: 'exposure' },
+    { id: 'sqli', label: 'SQL Injection', category: 'vulnerability' },
+    { id: 'xss', label: 'Cross-Site Scripting', category: 'vulnerability' },
+    { id: 'default-login', label: 'Default Logins', category: 'misconfig' },
+    { id: 'auth-bypass', label: 'Auth Bypass', category: 'vulnerability' },
+    { id: 'tech', label: 'Tech Detect', category: 'service' },
+    { id: 'ssl', label: 'SSL / TLS Security', category: 'service' },
+];
 
 export function ScanPanel() {
     const [target, setTarget] = useState('');
+    const [profile, setProfile] = useState<ScanProfile>('quick');
+    const [showAdvanced, setShowAdvanced] = useState(false);
     const [submitError, setSubmitError] = useState('');
+
+    // Custom options state
+    const [customPorts, setCustomPorts] = useState('');
+    const [timing, setTiming] = useState<ScanTiming>('normal');
+    const [serviceDetection, setServiceDetection] = useState(true);
+    const [osDetection, setOsDetection] = useState(false);
+    const [selectedTags, setSelectedTags] = useState<string[]>(['cve', 'misconfig']);
+
     const navigate = useNavigate();
     const startScan = useStartScan();
+    const { data: templatesData } = useScanTemplates();
+
+    const availableTags = templatesData?.tags?.length
+        ? templatesData.tags.map((t) => ({ id: t.id, label: t.name, category: t.category }))
+        : DEFAULT_POPULAR_TAGS;
 
     const validation = useMemo(() => {
         if (!target.trim()) return null;
         return validateTarget(target);
     }, [target]);
+
+    const toggleTag = (tagId: string) => {
+        setSelectedTags((prev) =>
+            prev.includes(tagId) ? prev.filter((t) => t !== tagId) : [...prev, tagId]
+        );
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -27,8 +74,25 @@ export function ScanPanel() {
             return;
         }
 
+        const options: ScanOptions = {};
+        if (customPorts.trim()) {
+            options.ports = customPorts.trim();
+        }
+        if (timing) {
+            options.timing = timing;
+        }
+        options.service_detection = serviceDetection;
+        options.os_detection = osDetection;
+        if (selectedTags.length > 0) {
+            options.tags = selectedTags;
+        }
+
         try {
-            const result = await startScan.mutateAsync({ target: target.trim() });
+            const result = await startScan.mutateAsync({
+                target: target.trim(),
+                scan_profile: profile,
+                options: profile === 'custom' || showAdvanced ? options : undefined,
+            });
             // Navigate to scan results page
             navigate(`/scan/${result.scan_id}`);
         } catch (err: any) {
@@ -77,13 +141,19 @@ export function ScanPanel() {
     };
 
     return (
-        <div className="card">
-            <h2 className="text-2xl font-bold mb-6">Start New Scan</h2>
+        <div className="card space-y-6">
+            <div>
+                <h2 className="text-2xl font-bold text-white mb-1">Launch Security Audit</h2>
+                <p className="text-sm text-gray-400">
+                    Execute automated multi-phase network reconnaissance, vulnerability validation, and AI risk synthesis.
+                </p>
+            </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Target input */}
                 <div>
                     <div className="flex items-center justify-between mb-2">
-                        <label htmlFor="target" className="block text-sm font-medium text-gray-300">
+                        <label htmlFor="target" className="block text-xs font-semibold uppercase tracking-wider text-gray-400">
                             Target Specification
                         </label>
                         {getTargetBadge()}
@@ -96,7 +166,7 @@ export function ScanPanel() {
                             setTarget(e.target.value);
                             if (submitError) setSubmitError('');
                         }}
-                        placeholder="e.g., example.com, 192.168.1.1, https://target.app"
+                        placeholder="e.g., scanme.nmap.org, 192.168.1.1, https://target.app"
                         className={`input ${
                             validation && !validation.valid && target.trim().length > 3
                                 ? 'border-amber-500/50 focus:border-amber-500'
@@ -135,6 +205,149 @@ export function ScanPanel() {
                     </div>
                 </div>
 
+                {/* Scan Profile Selector */}
+                <ScanProfileSelector
+                    selectedProfile={profile}
+                    onSelectProfile={(p) => {
+                        setProfile(p);
+                        if (p === 'custom') {
+                            setShowAdvanced(true);
+                        }
+                    }}
+                    disabled={startScan.isPending}
+                />
+
+                {/* Advanced Options Accordion */}
+                <div className="border border-cyber-border rounded-xl bg-cyber-light/10 overflow-hidden">
+                    <button
+                        type="button"
+                        onClick={() => setShowAdvanced(!showAdvanced)}
+                        className="w-full flex items-center justify-between px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-300 hover:text-white hover:bg-cyber-light/20 transition-colors"
+                    >
+                        <div className="flex items-center space-x-2">
+                            <Sliders className="w-4 h-4 text-cyber-blue" />
+                            <span>Advanced Engine &amp; Template Options</span>
+                            {profile === 'custom' && (
+                                <span className="text-[10px] bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded border border-purple-500/30">
+                                    Active for Custom Profile
+                                </span>
+                            )}
+                        </div>
+                        {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </button>
+
+                    {showAdvanced && (
+                        <div className="p-4 border-t border-cyber-border/80 space-y-4 bg-cyber-dark/40 text-xs">
+                            {/* Port specification and timing */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-gray-300 font-medium mb-1.5">
+                                        Custom Port Range / List
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={customPorts}
+                                        onChange={(e) => setCustomPorts(e.target.value)}
+                                        placeholder="e.g. 80,443,8080-8090, or 1-1000"
+                                        className="input text-xs py-1.5"
+                                    />
+                                    <span className="text-[11px] text-gray-500 mt-1 block">
+                                        Leave empty to use profile default ports.
+                                    </span>
+                                </div>
+
+                                <div>
+                                    <label className="block text-gray-300 font-medium mb-1.5">
+                                        Nmap Timing Policy
+                                    </label>
+                                    <select
+                                        value={timing}
+                                        onChange={(e) => setTiming(e.target.value as ScanTiming)}
+                                        className="input text-xs py-1.5 bg-cyber-dark text-gray-200"
+                                    >
+                                        <option value="paranoid">T0 - Paranoid (IDS Evasion)</option>
+                                        <option value="sneaky">T1 - Sneaky (Slow / Stealth)</option>
+                                        <option value="polite">T2 - Polite (Low Bandwidth)</option>
+                                        <option value="normal">T3 - Normal (Standard)</option>
+                                        <option value="aggressive">T4 - Aggressive (Fast)</option>
+                                        <option value="insane">T5 - Insane (Speed-focused)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            {/* Service and OS detection flags */}
+                            <div className="flex flex-wrap gap-6 pt-1">
+                                <label className="flex items-center space-x-2 cursor-pointer text-gray-300">
+                                    <input
+                                        type="checkbox"
+                                        checked={serviceDetection}
+                                        onChange={(e) => setServiceDetection(e.target.checked)}
+                                        className="rounded border-cyber-border text-cyber-blue focus:ring-0 bg-cyber-dark"
+                                    />
+                                    <span>Enable Service Fingerprinting (-sV)</span>
+                                </label>
+
+                                <label className="flex items-center space-x-2 cursor-pointer text-gray-300">
+                                    <input
+                                        type="checkbox"
+                                        checked={osDetection}
+                                        onChange={(e) => setOsDetection(e.target.checked)}
+                                        className="rounded border-cyber-border text-cyber-blue focus:ring-0 bg-cyber-dark"
+                                    />
+                                    <span>Enable OS Detection (-O)</span>
+                                </label>
+                            </div>
+
+                            {/* Nuclei Template Tags Selector */}
+                            <div className="pt-2 border-t border-cyber-border/40">
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="text-gray-300 font-medium flex items-center space-x-1.5">
+                                        <Tag className="w-3.5 h-3.5 text-cyber-blue" />
+                                        <span>Nuclei Vulnerability Tags ({selectedTags.length} active)</span>
+                                    </label>
+                                    <div className="space-x-2 text-[11px]">
+                                        <button
+                                            type="button"
+                                            onClick={() => setSelectedTags(availableTags.map((t) => t.id))}
+                                            className="text-cyber-blue hover:underline"
+                                        >
+                                            Select All
+                                        </button>
+                                        <span className="text-gray-600">|</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setSelectedTags([])}
+                                            className="text-gray-400 hover:underline"
+                                        >
+                                            Clear
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-wrap gap-1.5">
+                                    {availableTags.map((t) => {
+                                        const isSelected = selectedTags.includes(t.id);
+                                        return (
+                                            <button
+                                                key={t.id}
+                                                type="button"
+                                                onClick={() => toggleTag(t.id)}
+                                                className={`px-2.5 py-1 rounded-full text-xs font-mono transition-all border ${
+                                                    isSelected
+                                                        ? 'bg-cyber-blue/20 text-cyber-blue border-cyber-blue font-semibold'
+                                                        : 'bg-cyber-light/20 text-gray-400 border-cyber-border hover:border-gray-500'
+                                                }`}
+                                            >
+                                                #{t.id}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
                 {submitError && (
                     <div className="flex items-center gap-2 p-3 bg-danger/10 border border-danger/30 rounded-lg text-danger">
                         <AlertCircle className="w-5 h-5 flex-shrink-0" />
@@ -145,17 +358,17 @@ export function ScanPanel() {
                 <button
                     type="submit"
                     disabled={startScan.isPending || !target.trim() || (validation !== null && !validation.valid)}
-                    className="btn btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="btn btn-primary w-full flex items-center justify-center gap-2 py-3 text-base font-semibold disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-cyber-blue/20"
                 >
                     {startScan.isPending ? (
                         <>
                             <LoadingSpinner size="sm" />
-                            Starting Scan...
+                            Initializing Scanner Engine...
                         </>
                     ) : (
                         <>
-                            <Play className="w-5 h-5" />
-                            Start Security Scan
+                            <Play className="w-5 h-5 fill-current" />
+                            Start Security Assessment ({profile.toUpperCase()})
                         </>
                     )}
                 </button>
