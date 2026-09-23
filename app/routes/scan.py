@@ -1,10 +1,12 @@
 # app/routes/scan.py
 
 from fastapi import APIRouter, HTTPException, Depends, Request, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import uuid4
 from typing import Optional, Any, Dict, List
 import asyncio
+import json
 
 from app.schemas.scan import (
     ScanCreateRequest,
@@ -26,6 +28,7 @@ from app.db.crud import (
 )
 from app.services.scanner_service import run_full_scan, get_scan_queue_info
 from app.services.profile_service import get_available_profiles, get_available_tags, resolve_scan_options
+from app.services.event_bus import scan_event_bus
 from app.core.security import validate_target, sanitize_scan_id, TargetValidationError
 from app.core.rate_limit import check_rate_limit
 from app.core.logging import get_logger
@@ -211,6 +214,68 @@ async def get_results(
         raise HTTPException(status_code=404, detail="Scan not found")
 
     return _build_scan_response(scan)
+
+
+# ==================== LIVE TERMINAL STREAMING (SSE) ====================
+
+@router.get("/{scan_id}/stream")
+async def stream_scan_logs(
+    scan_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Stream real-time scan terminal logs via Server-Sent Events (SSE).
+    
+    Replays past events from memory buffer, then streams live events until scan completion.
+    """
+    try:
+        sanitized_id = sanitize_scan_id(scan_id)
+    except (ValueError, TargetValidationError):
+        raise HTTPException(status_code=400, detail="Invalid scan_id format")
+
+    scan = await get_scan(db, sanitized_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    async def event_generator():
+        # 1. Send all buffered historical logs
+        history = scan_event_bus.get_history(sanitized_id)
+        for msg in history:
+            yield f"event: {msg.event}\ndata: {msg.data.model_dump_json()}\n\n"
+
+        # If scan is already completed/failed/timeout and no active stream, finalize
+        if scan.status != ScanStatus.RUNNING.value:
+            yield f"event: done\ndata: {json.dumps({'scan_id': sanitized_id, 'status': scan.status})}\n\n"
+            return
+
+        # 2. Subscribe to live queue
+        queue = await scan_event_bus.subscribe(sanitized_id)
+        try:
+            while True:
+                # Check if client disconnected
+                if await request.is_disconnected():
+                    break
+                try:
+                    msg = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    yield f"event: {msg.event}\ndata: {msg.data.model_dump_json()}\n\n"
+                    if msg.event == "done":
+                        break
+                except asyncio.TimeoutError:
+                    # Heartbeat comment to keep HTTP connection alive
+                    yield ": ping\n\n"
+        finally:
+            await scan_event_bus.unsubscribe(sanitized_id, queue)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 
 # ==================== SCAN HISTORY ====================
