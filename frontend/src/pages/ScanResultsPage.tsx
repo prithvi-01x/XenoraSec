@@ -6,18 +6,30 @@ import { ErrorState } from '../components/ErrorState';
 import { RiskScore } from '../components/RiskScore';
 import { StatusBadge } from '../components/StatusBadge';
 import { SeverityBadge } from '../components/SeverityBadge';
+import { LiveTerminal } from '../components/LiveTerminal';
+import { ReportExportModal } from '../components/ReportExportModal';
 import { formatDuration, formatDate } from '../utils/helpers';
-import { RefreshCw, Trash2, ChevronDown, ExternalLink, XCircle } from 'lucide-react';
+import { 
+    RefreshCw, 
+    Trash2, 
+    ChevronDown, 
+    ExternalLink, 
+    XCircle, 
+    Download, 
+    Radio,
+    Sliders
+} from 'lucide-react';
 import type { Vulnerability } from '../types/api';
 
 export function ScanResultsPage() {
     const { scanId } = useParams<{ scanId: string }>();
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState<'summary' | 'ports' | 'vulnerabilities' | 'raw'>('summary');
+    const [activeTab, setActiveTab] = useState<'summary' | 'terminal' | 'ports' | 'vulnerabilities' | 'raw'>('summary');
     const [expandedVulnIndex, setExpandedVulnIndex] = useState<number | null>(null);
     const [severityFilter, setSeverityFilter] = useState<string>('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [deleteConfirm, setDeleteConfirm] = useState(false);
+    const [showReportModal, setShowReportModal] = useState(false);
 
     // Polling is now handled inside useScanResults via refetchInterval
     const { data: scan, isLoading, error, refetch } = useScanResults(scanId!);
@@ -70,16 +82,32 @@ export function ScanResultsPage() {
     return (
         <div className="space-y-6">
             {/* Header */}
-            <div className="flex items-start justify-between">
+            <div className="flex items-start justify-between flex-wrap gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold mb-2">{scan.target}</h1>
+                    <div className="flex items-center gap-3 mb-2 flex-wrap">
+                        <h1 className="text-3xl font-bold">{scan.target}</h1>
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-cyber-blue/15 text-cyber-blue border border-cyber-blue/30 uppercase">
+                            <Sliders className="w-3 h-3" />
+                            PROFILE: {scan.scan_profile || 'quick'}
+                        </span>
+                    </div>
                     <div className="flex items-center gap-4 text-sm text-gray-400">
                         <span>ID: {scan.scan_id.substring(0, 8)}...</span>
                         <span>Created: {formatDate(scan.created_at)}</span>
                         {scan.duration && <span>Duration: {formatDuration(scan.duration)}</span>}
                     </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                    {/* Export Report Button */}
+                    <button
+                        onClick={() => setShowReportModal(true)}
+                        className="btn btn-primary flex items-center gap-2"
+                        title="Download executive or technical assessment report"
+                    >
+                        <Download className="w-4 h-4" />
+                        Export Report
+                    </button>
+
                     {/* Cancel button — only visible while running */}
                     {scan.status === 'running' && (
                         <button
@@ -133,11 +161,20 @@ export function ScanResultsPage() {
 
             {/* Running indicator */}
             {scan.status === 'running' && (
-                <div className="flex items-center gap-3 p-4 bg-primary/10 border border-primary/30 rounded-lg">
-                    <div className="w-3 h-3 rounded-full bg-primary animate-pulse" />
-                    <span className="text-sm text-primary font-medium">
-                        Scan in progress — results will appear automatically when complete
-                    </span>
+                <div className="flex items-center justify-between p-4 bg-primary/10 border border-primary/30 rounded-lg flex-wrap gap-3">
+                    <div className="flex items-center gap-3">
+                        <div className="w-3 h-3 rounded-full bg-primary animate-pulse" />
+                        <span className="text-sm text-primary font-medium">
+                            Scan in progress &mdash; streaming backend engine logs in real-time
+                        </span>
+                    </div>
+                    <button
+                        onClick={() => setActiveTab('terminal')}
+                        className="btn btn-secondary btn-sm flex items-center gap-1.5 text-xs text-cyber-blue"
+                    >
+                        <Radio className="w-3.5 h-3.5 animate-pulse text-emerald-400" />
+                        <span>View Live Console</span>
+                    </button>
                 </div>
             )}
 
@@ -172,17 +209,22 @@ export function ScanResultsPage() {
             {/* Tabs */}
             <div className="card">
                 <div className="border-b border-gray-700 mb-6">
-                    <div className="flex gap-4">
-                        {(['summary', 'ports', 'vulnerabilities', 'raw'] as const).map((tab) => (
+                    <div className="flex gap-4 overflow-x-auto">
+                        {(['summary', 'terminal', 'ports', 'vulnerabilities', 'raw'] as const).map((tab) => (
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab)}
-                                className={`px-4 py-3 font-medium capitalize transition-colors border-b-2 ${activeTab === tab
+                                className={`px-4 py-3 font-medium capitalize transition-colors border-b-2 whitespace-nowrap flex items-center ${activeTab === tab
                                     ? 'border-primary text-primary'
                                     : 'border-transparent text-gray-400 hover:text-gray-300'
                                     }`}
                             >
-                                {tab}
+                                {tab === 'terminal' ? 'Live Console' : tab}
+                                {tab === 'terminal' && scan.status === 'running' && (
+                                    <span className="ml-2 inline-flex items-center">
+                                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                    </span>
+                                )}
                                 {tab === 'vulnerabilities' && scan.summary.total_vulnerabilities > 0 && (
                                     <span className="ml-2 text-xs bg-danger/20 text-danger px-1.5 py-0.5 rounded-full">
                                         {scan.summary.total_vulnerabilities}
@@ -357,6 +399,16 @@ export function ScanResultsPage() {
                     </div>
                 )}
 
+                {/* Live Console / Terminal Tab */}
+                {activeTab === 'terminal' && (
+                    <div className="space-y-4">
+                        <LiveTerminal 
+                            scanId={scan.scan_id} 
+                            isScanActive={scan.status === 'running'} 
+                        />
+                    </div>
+                )}
+
                 {/* Raw JSON Tab */}
                 {activeTab === 'raw' && (
                     <pre className="bg-background p-4 rounded-lg overflow-x-auto text-sm">
@@ -364,6 +416,14 @@ export function ScanResultsPage() {
                     </pre>
                 )}
             </div>
+
+            {/* Report Export Modal */}
+            <ReportExportModal
+                scanId={scan.scan_id}
+                target={scan.target}
+                isOpen={showReportModal}
+                onClose={() => setShowReportModal(false)}
+            />
         </div>
     );
 }
