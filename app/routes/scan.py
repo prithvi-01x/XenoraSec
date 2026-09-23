@@ -241,12 +241,16 @@ async def stream_scan_logs(
     async def event_generator():
         # 1. Send all buffered historical logs
         history = scan_event_bus.get_history(sanitized_id)
+        has_done = False
         for msg in history:
             yield f"event: {msg.event}\ndata: {msg.data.model_dump_json()}\n\n"
+            if msg.event == "done":
+                has_done = True
 
-        # If scan is already completed/failed/timeout and no active stream, finalize
-        if scan.status != ScanStatus.RUNNING.value:
-            yield f"event: done\ndata: {json.dumps({'scan_id': sanitized_id, 'status': scan.status})}\n\n"
+        # If scan has finished or history already contains done event, terminate stream
+        if has_done or scan.status != ScanStatus.RUNNING.value:
+            if not has_done:
+                yield f"event: done\ndata: {json.dumps({'scan_id': sanitized_id, 'status': scan.status})}\n\n"
             return
 
         # 2. Subscribe to live queue
@@ -319,13 +323,17 @@ async def websocket_scan_logs(websocket: WebSocket, scan_id: str):
 
     try:
         while True:
-            msg = await queue.get()
-            await websocket.send_json({
-                "event": msg.event,
-                "data": msg.data.model_dump(mode="json")
-            })
-            if msg.event == "done":
-                break
+            try:
+                msg = await asyncio.wait_for(queue.get(), timeout=1.0)
+                await websocket.send_json({
+                    "event": msg.event,
+                    "data": msg.data.model_dump(mode="json")
+                })
+                if msg.event == "done":
+                    break
+            except asyncio.TimeoutError:
+                if client_task.done():
+                    break
     except (WebSocketDisconnect, asyncio.CancelledError):
         pass
     except Exception as e:
