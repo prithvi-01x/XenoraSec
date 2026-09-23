@@ -29,13 +29,40 @@ class SeverityLevel(str, Enum):
     UNKNOWN = "unknown"
 
 
+class ScanProfile(str, Enum):
+    """Scan profile types"""
+    QUICK = "quick"
+    FULL = "full"
+    NETWORK = "network"
+    CUSTOM = "custom"
+
+
+class ReportFormat(str, Enum):
+    """Supported report export formats"""
+    JSON = "json"
+    MARKDOWN = "markdown"
+    HTML = "html"
+    PDF = "pdf"
+
+
+class ReportType(str, Enum):
+    """Report audience type"""
+    TECHNICAL = "technical"
+    EXECUTIVE = "executive"
+
+
 # ==================== REQUEST SCHEMAS ====================
 
 class ScanOptions(BaseModel):
     """Optional scan configuration overrides"""
+    profile: Optional[ScanProfile] = ScanProfile.QUICK
     port_range: Optional[str] = "1-1000"
     nmap_timing: Optional[str] = "T4"
-    nuclei_templates: Optional[List[str]] = ["cve", "misconfig", "exposure"]
+    nuclei_tags: Optional[List[str]] = Field(
+        default_factory=lambda: ["cve", "misconfig", "exposure"]
+    )
+    nuclei_templates: Optional[List[str]] = None
+    severity_filter: Optional[List[str]] = None
     concurrency: Optional[int] = 10
     timeout_minutes: Optional[int] = 30
     rate_limit: Optional[int] = 100
@@ -56,7 +83,8 @@ class ScanCreateRequest(BaseModel):
         min_length=1,
         max_length=253
     )
-    scan_mode: Optional[str] = "quick"
+    scan_profile: Optional[ScanProfile] = ScanProfile.QUICK
+    scan_mode: Optional[str] = "quick"  # Backward compatibility
     options: Optional[ScanOptions] = None
 
     @field_validator("target")
@@ -65,6 +93,14 @@ class ScanCreateRequest(BaseModel):
         if not v or not v.strip():
             raise ValueError("Target cannot be empty")
         return v.strip()
+
+
+class ReportRequest(BaseModel):
+    """Request parameters for generating reports"""
+    format: ReportFormat = ReportFormat.HTML
+    report_type: ReportType = ReportType.TECHNICAL
+    include_remediation: bool = True
+    include_raw_output: bool = False
 
 
 class ScanRetryRequest(BaseModel):
@@ -79,6 +115,7 @@ class ScanCreateResponse(BaseModel):
     scan_id: str
     target: str
     status: ScanStatus
+    scan_profile: Optional[str] = "quick"
     message: str = "Scan started successfully"
 
     model_config = ConfigDict(
@@ -87,6 +124,7 @@ class ScanCreateResponse(BaseModel):
                 "scan_id": "550e8400-e29b-41d4-a716-446655440000",
                 "target": "example.com",
                 "status": "running",
+                "scan_profile": "quick",
                 "message": "Scan started successfully"
             }
         }
@@ -153,6 +191,8 @@ class ScanResultResponse(BaseModel):
     scan_id: str
     target: str
     status: ScanStatus
+    scan_profile: Optional[str] = "quick"
+    scan_options: Optional[Dict[str, Any]] = None
     risk_score: float
     duration: Optional[float] = None
     summary: ScanSummary
@@ -169,6 +209,7 @@ class ScanResultResponse(BaseModel):
                 "scan_id": "550e8400-e29b-41d4-a716-446655440000",
                 "target": "example.com",
                 "status": "completed",
+                "scan_profile": "quick",
                 "risk_score": 7.5,
                 "duration": 45.2,
                 "summary": {
@@ -206,6 +247,7 @@ class ScanHistoryItem(BaseModel):
     scan_id: str
     target: str
     status: ScanStatus
+    scan_profile: Optional[str] = "quick"
     risk_score: float
     created_at: datetime
     updated_at: datetime
