@@ -37,18 +37,8 @@ class ScanProfile(str, Enum):
     CUSTOM = "custom"
 
 
-class ReportFormat(str, Enum):
-    """Supported report export formats"""
-    JSON = "json"
-    MARKDOWN = "markdown"
-    HTML = "html"
-    PDF = "pdf"
-
-
-class ReportType(str, Enum):
-    """Report audience type"""
-    TECHNICAL = "technical"
-    EXECUTIVE = "executive"
+# Import and re-export to maintain single source of truth without breaking backwards compatibility
+from app.schemas.report import ReportFormat, ReportType
 
 
 # ==================== REQUEST SCHEMAS ====================
@@ -101,11 +91,6 @@ class ReportRequest(BaseModel):
     report_type: ReportType = ReportType.TECHNICAL
     include_remediation: bool = True
     include_raw_output: bool = False
-
-
-class ScanRetryRequest(BaseModel):
-    """Request to retry a failed scan"""
-    pass
 
 
 # ==================== RESPONSE SCHEMAS ====================
