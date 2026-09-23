@@ -148,3 +148,52 @@ def generate_executive_summary(scan: Dict[str, Any]) -> ExecutiveSummary:
         key_findings=key_findings,
         strategic_recommendations=recommendations,
     )
+
+
+def generate_json_report(
+    scan: Dict[str, Any],
+    report_type: ReportType = ReportType.TECHNICAL
+) -> str:
+    """
+    Generate structured, comprehensive JSON report export.
+    """
+    target = scan.get("target", "Target Host")
+    scan_id = scan.get("scan_id", "unknown-scan")
+    risk_score = float(scan.get("risk_score", 0.0))
+
+    exec_summary = generate_executive_summary(scan)
+    nuclei_res = scan.get("nuclei", {}) if isinstance(scan.get("nuclei"), dict) else {}
+    nmap_res = scan.get("nmap", {}) if isinstance(scan.get("nmap"), dict) else {}
+    cves = extract_cve_details(nuclei_res, target)
+
+    metadata = ReportMetadata(
+        report_id=f"rep-{uuid4().hex[:12]}",
+        scan_id=scan_id,
+        target=target,
+        generated_at=datetime.now(UTC),
+        report_type=report_type,
+        format=ReportFormat.JSON,
+        author="XenoraSec Automated Engine",
+        organization=settings.REPORT_COMPANY_NAME,
+        risk_score=risk_score,
+    )
+
+    report_payload: Dict[str, Any] = {
+        "metadata": metadata.model_dump(mode="json"),
+        "executive_summary": exec_summary.model_dump(mode="json"),
+        "cve_details": [c.model_dump(mode="json") for c in cves],
+        "network_perimeter": {
+            "total_open_ports": nmap_res.get("total_ports", 0),
+            "ports": nmap_res.get("ports", []),
+            "host_info": nmap_res.get("host_info", {}),
+        },
+    }
+
+    if report_type == ReportType.TECHNICAL:
+        report_payload["vulnerabilities"] = nuclei_res.get("vulnerabilities", [])
+        report_payload["scan_options"] = scan.get("scan_options", {})
+        report_payload["scan_profile"] = scan.get("scan_profile", "quick")
+        report_payload["scan_stats"] = nuclei_res.get("scan_stats", {})
+
+    return json.dumps(report_payload, indent=2, default=str)
+
