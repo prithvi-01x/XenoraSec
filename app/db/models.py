@@ -43,6 +43,10 @@ class ScanResult(Base):
     # Optional: parent scan_id for retries
     parent_scan_id = Column(String(36), nullable=True)
     
+    # Scan profile and custom options
+    scan_profile = Column(String(50), default="quick", nullable=False, index=True)
+    scan_options = Column(JSON, nullable=True)
+    
     # Error message if failed
     error_message = Column(Text, nullable=True)
     
@@ -91,6 +95,8 @@ class ScanResult(Base):
             "risk_score": self.risk_score,
             "duration": self.duration,
             "parent_scan_id": self.parent_scan_id,
+            "scan_profile": self.scan_profile,
+            "scan_options": self.scan_options,
             "error_message": self.error_message,
             "created_at": self.created_at,
             "updated_at": self.updated_at,

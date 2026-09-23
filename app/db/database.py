@@ -81,14 +81,26 @@ async def get_db() -> AsyncSession:
             await session.close()
 
 
+from sqlalchemy import text
+
 async def init_db() -> None:
     """
-    Initialize database tables.
+    Initialize database tables and run automatic migrations.
     Called on application startup.
     """
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            
+            # Lightweight SQLite migration for added columns
+            if IS_SQLITE:
+                res = await conn.execute(text("PRAGMA table_info(scan_results)"))
+                existing_cols = {row[1] for row in res.fetchall()}
+                if existing_cols:
+                    if "scan_profile" not in existing_cols:
+                        await conn.execute(text("ALTER TABLE scan_results ADD COLUMN scan_profile VARCHAR(50) DEFAULT 'quick'"))
+                    if "scan_options" not in existing_cols:
+                        await conn.execute(text("ALTER TABLE scan_results ADD COLUMN scan_options JSON"))
         logger.info("Database tables initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
