@@ -21,6 +21,12 @@ from app.schemas.report import (
     RemediationAdvice,
     ReportDownloadResponse,
 )
+from app.schemas.stream import (
+    StreamLogLevel,
+    StreamStage,
+    ScanLogEvent,
+    ScanStreamMessage,
+)
 
 __all__ = [
     "ScanStatus",
@@ -40,4 +46,8 @@ __all__ = [
     "CveDetail",
     "RemediationAdvice",
     "ReportDownloadResponse",
+    "StreamLogLevel",
+    "StreamStage",
+    "ScanLogEvent",
+    "ScanStreamMessage",
 ]
