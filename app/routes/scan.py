@@ -4,19 +4,21 @@ from fastapi import APIRouter, HTTPException, Depends, Request, Query, WebSocket
 from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import uuid4
-from typing import Optional, Any, Dict, List
+from typing import Optional, Any
 import asyncio
 import json
+import os
 
 from app.schemas.scan import (
     ScanCreateRequest,
     ScanCreateResponse,
     ScanResultResponse,
     ScanHistoryResponse,
+    ScanOptions,
     ScanStatus,
     ErrorResponse
 )
-from app.db.database import get_db
+from app.db.database import get_db, AsyncSessionLocal
 from app.db.crud import (
     create_scan,
     get_scan,
@@ -540,7 +542,6 @@ async def retry_scan(
     if not new_scan:
         raise HTTPException(status_code=500, detail="Failed to create retry scan")
     
-    from app.schemas.scan import ScanOptions
     retry_options = ScanOptions(**original_scan.scan_options) if original_scan.scan_options else None
     
     # Fix 8: Track retry task reference too
@@ -610,7 +611,6 @@ async def cleanup_endpoint(
     - **days**: Delete scans older than this many days (default from config)
     - **secret**: Must match the CLEANUP_SECRET environment variable
     """
-    import os
     expected_secret = os.getenv("CLEANUP_SECRET", "")
     if not expected_secret:
         raise HTTPException(
@@ -715,10 +715,6 @@ async def _run_and_store_scan(
     
     This runs in a separate task and manages its own database session.
     """
-    
-    # Import here to avoid circular dependency
-    from app.db.database import AsyncSessionLocal
-    
     async with AsyncSessionLocal() as db:
         try:
             logger.info(

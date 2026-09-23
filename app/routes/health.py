@@ -1,6 +1,7 @@
 # app/routes/health.py
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from datetime import datetime, UTC
@@ -44,7 +45,6 @@ async def health_check(db: AsyncSession = Depends(get_db)):
     }
     
     if status_code == 503:
-        from fastapi.responses import JSONResponse
         return JSONResponse(
             status_code=503,
             content=response_data

@@ -1,6 +1,6 @@
 # app/db/database.py
 
-from sqlalchemy import event
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.pool import NullPool, QueuePool
@@ -80,8 +80,6 @@ async def get_db() -> AsyncSession:
         finally:
             await session.close()
 
-
-from sqlalchemy import text
 
 async def init_db() -> None:
     """

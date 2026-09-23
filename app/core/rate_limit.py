@@ -1,6 +1,7 @@
 # app/core/rate_limit.py
 
 import time
+import ipaddress
 from collections import defaultdict, deque
 from typing import Optional, Tuple
 from fastapi import Request, HTTPException
@@ -135,7 +136,6 @@ class RateLimiter:
             candidate_ip = request.headers.get("X-Real-IP", "").strip()
 
         if candidate_ip:
-            import ipaddress
             try:
                 ipaddress.ip_address(candidate_ip)
                 return candidate_ip

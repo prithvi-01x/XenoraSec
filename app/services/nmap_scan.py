@@ -15,7 +15,6 @@ logger = get_logger(__name__)
 # Constants
 RETRY_DELAY_SECONDS = 2  # Delay between retry attempts
 LOCALHOST_TIMING = "T5"  # Aggressive timing for localhost scans
-DEFAULT_TIMING_FALLBACK = "T4"  # Default timing if not set
 
 
 class NmapScanner:
@@ -346,6 +345,7 @@ async def run_nmap_scan(
     target: str,
     timeout: Optional[int] = None,
     timing: Optional[str] = None,
+    max_retries: Optional[int] = None,
     port_range: Optional[str] = None,
     scan_id: Optional[str] = None
 ) -> Dict[str, Any]:
@@ -356,6 +356,7 @@ async def run_nmap_scan(
         target: Target hostname or IP (NOT URL)
         timeout: Optional timeout in seconds
         timing: Optional timing template (T1-T5)
+        max_retries: Optional max retry count
         port_range: Optional port range (e.g. '1-1000', '80,443')
         scan_id: Optional scan ID for streaming logs
     
@@ -365,6 +366,7 @@ async def run_nmap_scan(
     scanner = NmapScanner(
         timeout=timeout,
         timing=timing,
+        max_retries=max_retries,
         port_range=port_range,
         scan_id=scan_id
     )

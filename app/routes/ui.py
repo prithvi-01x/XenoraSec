@@ -2,8 +2,8 @@
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc, and_
-from datetime import datetime, timedelta
+from sqlalchemy import select, func, desc
+from datetime import datetime, timedelta, UTC
 
 from app.db.database import get_db
 from app.db.models import ScanResult
@@ -67,7 +67,7 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
                     severity_counts[k.lower()] += v
                     
     # Risk Trend (Last 30 days)
-    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+    thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
     trend_query = select(ScanResult.created_at, ScanResult.risk_score).where(
         ScanResult.created_at >= thirty_days_ago
     ).order_by(ScanResult.created_at)

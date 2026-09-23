@@ -1,7 +1,7 @@
 # app/db/crud.py
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc, and_
+from sqlalchemy import select, func, desc, and_, delete
 from sqlalchemy.exc import SQLAlchemyError
 from typing import Optional, List, Tuple
 from datetime import datetime, UTC, timedelta
@@ -300,7 +300,6 @@ async def cleanup_old_scans(
         cutoff_date = datetime.now(UTC) - timedelta(days=days)
         
         # Bulk delete in a single query - much faster than row-by-row
-        from sqlalchemy import delete
         stmt = delete(ScanResult).where(ScanResult.created_at < cutoff_date)
         result = await db.execute(stmt)
         await db.commit()
@@ -326,8 +325,6 @@ async def get_scan_statistics(db: AsyncSession) -> dict:
     """
     try:
         # Fix 11: Single query with GROUP BY instead of one query per status (was N+1)
-        from sqlalchemy import case as sa_case
-
         total_query = select(func.count(ScanResult.id))
         total_result = await db.execute(total_query)
         total_scans = total_result.scalar() or 0

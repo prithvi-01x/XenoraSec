@@ -9,6 +9,7 @@ from app.core.logging import get_logger
 from app.schemas.scan import ScanStatus
 from app.schemas.stream import StreamLogLevel, StreamStage
 from app.services.event_bus import scan_event_bus
+from app.services.ai_service import calculate_severity_distribution
 
 logger = get_logger(__name__)
 
@@ -417,25 +418,8 @@ class NucleiScanner:
             return None
     
     def _severity_dist(self, vulns: List[Dict[str, Any]]) -> Dict[str, int]:
-        """Calculate severity distribution"""
-        
-        dist = {
-            "critical": 0,
-            "high": 0,
-            "medium": 0,
-            "low": 0,
-            "info": 0,
-            "unknown": 0
-        }
-        
-        for v in vulns:
-            severity = v.get("severity", "unknown").lower()
-            if severity in dist:
-                dist[severity] += 1
-            else:
-                dist["unknown"] += 1
-        
-        return dist
+        """Calculate severity distribution using centralized ai_service helper"""
+        return calculate_severity_distribution(vulns)
 
 
 async def run_nuclei_scan(

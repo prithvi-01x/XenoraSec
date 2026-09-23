@@ -4,11 +4,15 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
+import os
 import time
 
-from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import update as sa_update
 from app.routes import health, scan, ui
-from app.db.database import init_db, close_db
+from app.db.database import init_db, close_db, AsyncSessionLocal
+from app.db.models import ScanResult
+from app.schemas.scan import ScanStatus
 from app.core.config import settings
 from app.core.logging import setup_logging, get_logger
 from app.core.security import TargetValidationError
@@ -45,11 +49,6 @@ async def lifespan(app: FastAPI):
     # Fix 1: Clean up zombie scans left running from a previous process
     # (happens on every Render cold-start / crash restart)
     try:
-        from app.db.database import AsyncSessionLocal
-        from app.db.models import ScanResult
-        from app.schemas.scan import ScanStatus
-        from sqlalchemy import update as sa_update
-
         async with AsyncSessionLocal() as db:
             result = await db.execute(
                 sa_update(ScanResult)
@@ -95,9 +94,6 @@ app = FastAPI(
 
 
 # ==================== CORS MIDDLEWARE ====================
-
-from fastapi.middleware.cors import CORSMiddleware
-import os
 
 # CORS configuration - supports multiple origins via environment variable
 # Format: ALLOWED_ORIGINS="https://domain1.com,https://domain2.com"
@@ -191,13 +187,6 @@ app.include_router(ui.router)
 app.include_router(health.router)
 app.include_router(scan.router)
 
-# Mount static files
-# Static files mount removed in favor of React frontend
-# app.mount("/static", StaticFiles(directory="app/static"), name="static")
-
-
-
-
 
 # ==================== STARTUP MESSAGE ====================
 
@@ -207,7 +196,7 @@ if __name__ == "__main__":
     logger.info("Starting uvicorn server...")
     
     uvicorn.run(
-        "main:app",
+        "app.main:app",
         host="0.0.0.0",
         port=8000,
         reload=settings.DEBUG,

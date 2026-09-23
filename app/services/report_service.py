@@ -25,8 +25,8 @@ from app.schemas.report import (
     ReportMetadata,
     ExecutiveSummary,
     CveDetail,
-    RemediationAdvice,
 )
+from app.services.ai_service import calculate_severity_distribution
 
 logger = get_logger(__name__)
 
@@ -114,20 +114,14 @@ def generate_executive_summary(scan: Dict[str, Any]) -> ExecutiveSummary:
     info_count = dist.get("info", 0)
     ports_count = nmap.get("total_ports", 0)
 
-    # Fallback to direct raw vulnerability/port counting if summary dictionary is omitted
-    if crit_count == 0 and high_count == 0 and nuclei.get("vulnerabilities"):
-        for v in nuclei.get("vulnerabilities", []):
-            sev = (v.get("severity") or "info").lower()
-            if sev == "critical":
-                crit_count += 1
-            elif sev == "high":
-                high_count += 1
-            elif sev == "medium":
-                med_count += 1
-            elif sev == "low":
-                low_count += 1
-            elif sev == "info":
-                info_count += 1
+    # Fallback to direct raw vulnerability counting if summary dictionary is omitted
+    if not dist and nuclei.get("vulnerabilities"):
+        dist = calculate_severity_distribution(nuclei.get("vulnerabilities", []))
+        crit_count = dist.get("critical", 0)
+        high_count = dist.get("high", 0)
+        med_count = dist.get("medium", 0)
+        low_count = dist.get("low", 0)
+        info_count = dist.get("info", 0)
 
     if ports_count == 0 and nmap.get("ports"):
         ports_count = len(nmap.get("ports", []))
