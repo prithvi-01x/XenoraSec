@@ -1,9 +1,21 @@
-# app/services/report_service.py
-
+import io
 import json
 from datetime import datetime, UTC
 from typing import Dict, List, Any, Optional
 from uuid import uuid4
+
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+    Table,
+    TableStyle,
+    HRFlowable,
+    KeepTogether,
+)
 
 from app.core.config import settings
 from app.core.logging import get_logger
@@ -826,4 +838,277 @@ def generate_html_report(
     return html
 
 
+def _escape_pdf(text: Any) -> str:
+    """Escape XML special characters for ReportLab Paragraphs."""
+    if text is None:
+        return ""
+    s = str(text)
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
+
+def generate_pdf_report(
+    scan: Dict[str, Any],
+    report_type: ReportType = ReportType.TECHNICAL
+) -> bytes:
+    """
+    Generate an executive or technical PDF security report using ReportLab.
+    Returns raw PDF bytes.
+    """
+    target = scan.get("target", "Target Host")
+    scan_id = scan.get("scan_id", "unknown-scan")
+    risk_score = float(scan.get("risk_score", 0.0))
+    scan_profile = scan.get("scan_profile", "quick")
+    exec_summary = generate_executive_summary(scan)
+
+    nuclei_res = scan.get("nuclei", {}) if isinstance(scan.get("nuclei"), dict) else {}
+    nmap_res = scan.get("nmap", {}) if isinstance(scan.get("nmap"), dict) else {}
+    cves = extract_cve_details(nuclei_res, target)
+    ports = nmap_res.get("ports", [])
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=letter,
+        leftMargin=36,
+        rightMargin=36,
+        topMargin=36,
+        bottomMargin=36
+    )
+
+    styles = getSampleStyleSheet()
+
+    # Custom styles
+    title_style = ParagraphStyle(
+        'DocTitle',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=18,
+        leading=22,
+        textColor=colors.white
+    )
+    subtitle_style = ParagraphStyle(
+        'DocSubtitle',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=9,
+        leading=13,
+        textColor=colors.HexColor('#94a3b8')
+    )
+    h2_style = ParagraphStyle(
+        'SectionH2',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=13,
+        leading=17,
+        textColor=colors.HexColor('#0f172a'),
+        spaceBefore=14,
+        spaceAfter=6
+    )
+    h3_style = ParagraphStyle(
+        'SectionH3',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=10,
+        leading=14,
+        textColor=colors.HexColor('#334155'),
+        spaceBefore=8,
+        spaceAfter=4
+    )
+    body_style = ParagraphStyle(
+        'ReportBody',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=8.5,
+        leading=12,
+        textColor=colors.HexColor('#1e293b')
+    )
+    bullet_style = ParagraphStyle(
+        'ReportBullet',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=8.5,
+        leading=12,
+        textColor=colors.HexColor('#1e293b'),
+        leftIndent=14
+    )
+    code_style = ParagraphStyle(
+        'ReportCode',
+        parent=styles['Normal'],
+        fontName='Courier',
+        fontSize=8,
+        leading=10.5,
+        textColor=colors.HexColor('#0f172a')
+    )
+    footer_style = ParagraphStyle(
+        'ReportFooter',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=7.5,
+        leading=10,
+        textColor=colors.HexColor('#64748b'),
+        alignment=1  # Centered
+    )
+
+    story = []
+
+    # 1. Header Banner Table
+    header_data = [
+        [
+            Paragraph(f"<b>{_escape_pdf(settings.REPORT_COMPANY_NAME)}</b><br/><font size=14><b>Security Assessment Report</b></font>", title_style),
+            Paragraph(f"<b>Target:</b> {_escape_pdf(target)}<br/>"
+                      f"<b>Date:</b> {exec_summary.scan_date.strftime('%Y-%m-%d %H:%M UTC')}<br/>"
+                      f"<b>Profile:</b> {_escape_pdf(scan_profile.upper())} | <b>Mode:</b> {report_type.value.upper()}", subtitle_style)
+        ]
+    ]
+    header_table = Table(header_data, colWidths=[320, 220])
+    header_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#0f172a')),
+        ('PADDING', (0, 0), (-1, -1), 12),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 14),
+    ]))
+    story.append(header_table)
+    story.append(Spacer(1, 14))
+
+    # 2. Key Metrics Posture Grid
+    risk_color = colors.HexColor('#10b981')
+    if risk_score >= 8.0:
+        risk_color = colors.HexColor('#ef4444')
+    elif risk_score >= 6.0:
+        risk_color = colors.HexColor('#f97316')
+    elif risk_score >= 3.5:
+        risk_color = colors.HexColor('#eab308')
+    elif risk_score > 0.0:
+        risk_color = colors.HexColor('#3b82f6')
+
+    metric_data = [
+        [
+            Paragraph(f"<font color='{risk_color.hexval()}'><b>{risk_score:.1f} / 10</b></font><br/><font size=7 color='#64748b'>RISK SCORE ({exec_summary.risk_category})</font>", body_style),
+            Paragraph(f"<font color='#ef4444'><b>{exec_summary.critical_count}</b></font><br/><font size=7 color='#64748b'>CRITICAL</font>", body_style),
+            Paragraph(f"<font color='#f97316'><b>{exec_summary.high_count}</b></font><br/><font size=7 color='#64748b'>HIGH</font>", body_style),
+            Paragraph(f"<font color='#eab308'><b>{exec_summary.medium_count}</b></font><br/><font size=7 color='#64748b'>MEDIUM</font>", body_style),
+            Paragraph(f"<font color='#3b82f6'><b>{exec_summary.open_ports_count}</b></font><br/><font size=7 color='#64748b'>OPEN PORTS</font>", body_style),
+        ]
+    ]
+    metric_table = Table(metric_data, colWidths=[110, 107, 107, 107, 107])
+    metric_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f8fafc')),
+        ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#cbd5e1')),
+        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('PADDING', (0, 0), (-1, -1), 8),
+    ]))
+    story.append(metric_table)
+    story.append(Spacer(1, 10))
+
+    # 3. Executive Observations & Recommendations
+    story.append(Paragraph("Executive Observations", h2_style))
+    for f in exec_summary.key_findings:
+        story.append(Paragraph(f"&bull; {_escape_pdf(f)}", bullet_style))
+        story.append(Spacer(1, 2))
+
+    story.append(Spacer(1, 6))
+    story.append(Paragraph("Strategic Remediation Priorities", h3_style))
+    for idx, r in enumerate(exec_summary.strategic_recommendations, 1):
+        story.append(Paragraph(f"<b>{idx}.</b> {_escape_pdf(r)}", bullet_style))
+        story.append(Spacer(1, 2))
+
+    # 4. Detailed Vulnerabilities (Technical report or findings exist)
+    if report_type == ReportType.TECHNICAL or cves:
+        story.append(Spacer(1, 8))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#cbd5e1'), spaceBefore=8, spaceAfter=8))
+        story.append(Paragraph(f"Vulnerabilities &amp; CVE Details ({len(cves)})", h2_style))
+
+        if not cves:
+            story.append(Paragraph("<i>No critical, high, or medium exploitable vulnerabilities were identified during this assessment.</i>", body_style))
+        else:
+            for cve in cves:
+                sev_color = {
+                    "critical": "#ef4444",
+                    "high": "#f97316",
+                    "medium": "#eab308",
+                    "low": "#3b82f6",
+                    "info": "#64748b"
+                }.get(cve.severity.lower(), "#64748b")
+
+                vuln_elements = [
+                    [
+                        Paragraph(f"<font color='{sev_color}'><b>[{cve.severity.upper()}]</b></font> <b>{_escape_pdf(cve.title)}</b> ({_escape_pdf(cve.cve_id)})", body_style),
+                        Paragraph(f"<b>CVSS:</b> {cve.cvss_score if cve.cvss_score else 'N/A'}", body_style)
+                    ],
+                    [
+                        Paragraph(f"<b>Target:</b> {_escape_pdf(cve.affected_target)}", code_style),
+                        Paragraph(f"<b>CWE:</b> {_escape_pdf(cve.cwe_id if cve.cwe_id else 'N/A')}", body_style)
+                    ],
+                    [
+                        Paragraph(f"<b>Description:</b> {_escape_pdf(cve.description)}", body_style),
+                        Paragraph("", body_style)
+                    ],
+                    [
+                        Paragraph(f"<b>Remediation:</b> <font color='#065f46'>{_escape_pdf(cve.remediation_advice)}</font>", body_style),
+                        Paragraph("", body_style)
+                    ]
+                ]
+                vuln_table = Table(vuln_elements, colWidths=[430, 110])
+                vuln_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f8fafc')),
+                    ('BOX', (0, 0), (-1, -1), 0.75, colors.HexColor('#cbd5e1')),
+                    ('LINEBEFORE', (0, 0), (0, -1), 3, colors.HexColor(sev_color)),
+                    ('SPAN', (0, 2), (1, 2)),
+                    ('SPAN', (0, 3), (1, 3)),
+                    ('PADDING', (0, 0), (-1, -1), 5),
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ]))
+                story.append(KeepTogether([vuln_table, Spacer(1, 6)]))
+
+    # 5. Open Ports & Services
+    if report_type == ReportType.TECHNICAL:
+        story.append(Spacer(1, 8))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#cbd5e1'), spaceBefore=8, spaceAfter=8))
+        story.append(Paragraph(f"Discovered Ports &amp; Perimeter Services ({len(ports)})", h2_style))
+
+        if not ports:
+            story.append(Paragraph("<i>No standard open ports discovered during perimeter scan.</i>", body_style))
+        else:
+            port_table_data = [
+                [
+                    Paragraph("<b>Port / Protocol</b>", body_style),
+                    Paragraph("<b>Service</b>", body_style),
+                    Paragraph("<b>Product / Version</b>", body_style),
+                    Paragraph("<b>Extra Info</b>", body_style)
+                ]
+            ]
+            for p in ports:
+                port_proto = f"{p.get('port')}/{p.get('protocol', 'tcp')}"
+                svc = p.get('service') or 'unknown'
+                prod = f"{p.get('product', '')} {p.get('version', '')}".strip() or '-'
+                extra = p.get('extrainfo') or '-'
+                port_table_data.append([
+                    Paragraph(f"<code>{_escape_pdf(port_proto)}</code>", code_style),
+                    Paragraph(_escape_pdf(svc), body_style),
+                    Paragraph(_escape_pdf(prod), body_style),
+                    Paragraph(_escape_pdf(extra), body_style)
+                ])
+
+            port_table = Table(port_table_data, colWidths=[110, 110, 180, 140])
+            port_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
+                ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1')),
+                ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+                ('PADDING', (0, 0), (-1, -1), 4.5),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ]))
+            story.append(port_table)
+
+    # 6. Confidentiality Footer
+    story.append(Spacer(1, 16))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#e2e8f0'), spaceBefore=8, spaceAfter=8))
+    story.append(Paragraph(
+        f"Generated automatically by <b>{_escape_pdf(settings.REPORT_COMPANY_NAME)}</b> automated penetration testing platform.<br/>"
+        "CONFIDENTIAL &amp; PROPRIETARY &mdash; FOR AUTHORIZED RECIPIENTS ONLY",
+        footer_style
+    ))
+
+    doc.build(story)
+    return buf.getvalue()
