@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { scanApi, dashboardApi, healthApi } from '../api/client';
-import type { ScanCreateRequest } from '../types/api';
+import type { ScanCreateRequest, ReportFormat, ReportType } from '../types/api';
 
 // Query keys
 export const queryKeys = {
@@ -9,6 +9,8 @@ export const queryKeys = {
     queueInfo: () => ['scan', 'queue'] as const,
     dashboardStats: () => ['dashboard', 'stats'] as const,
     health: () => ['health'] as const,
+    profiles: () => ['scan', 'profiles'] as const,
+    templates: () => ['scan', 'templates'] as const,
 };
 
 // Scan results query — auto-polls every 3s while scan is running, stops when done
@@ -133,3 +135,49 @@ export function useCleanupScans() {
         },
     });
 }
+
+// Available scan profiles query
+export function useScanProfiles() {
+    return useQuery({
+        queryKey: queryKeys.profiles(),
+        queryFn: () => scanApi.getProfiles(),
+        staleTime: 1000 * 60 * 10, // 10 minutes cache
+    });
+}
+
+// Available Nuclei template tags query
+export function useScanTemplates() {
+    return useQuery({
+        queryKey: queryKeys.templates(),
+        queryFn: () => scanApi.getTemplates(),
+        staleTime: 1000 * 60 * 10, // 10 minutes cache
+    });
+}
+
+// Download report mutation
+export function useDownloadReport() {
+    return useMutation({
+        mutationFn: async ({
+            scanId,
+            format = 'html',
+            reportType = 'technical',
+        }: {
+            scanId: string;
+            format?: ReportFormat;
+            reportType?: ReportType;
+        }) => {
+            const blob = await scanApi.downloadReport(scanId, format, reportType);
+            const ext = format === 'pdf' ? 'pdf' : format === 'markdown' ? 'md' : format === 'json' ? 'json' : 'html';
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `xenorasec-report-${scanId.slice(0, 8)}-${reportType}.${ext}`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            return { success: true };
+        },
+    });
+}
+
