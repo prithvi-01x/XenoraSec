@@ -525,13 +525,14 @@ async def _run_and_store_scan(
             if current_task:
                 _running_scan_tasks[scan_id] = current_task
             
-            # Run the full scan with profile and options
+            # Run the full scan with profile, options, and scan_id
             result = await run_full_scan(
                 target,
                 metadata,
                 parallel=True,
                 scan_profile=scan_profile,
-                options=options
+                options=options,
+                scan_id=scan_id
             )
             
             # Determine final status based on result

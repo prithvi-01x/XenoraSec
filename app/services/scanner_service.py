@@ -8,6 +8,8 @@ from app.services.nmap_scan import run_nmap_scan
 from app.services.nuclei_scan import run_nuclei_scan
 from app.services.ai_service import analyze_vulnerability_report
 from app.services.profile_service import resolve_scan_options
+from app.services.event_bus import scan_event_bus
+from app.schemas.stream import StreamLogLevel, StreamStage
 from app.core.security import prepare_nmap_target, prepare_nuclei_target
 from app.core.config import settings
 from app.core.logging import get_logger
@@ -24,7 +26,8 @@ async def run_full_scan(
     metadata: dict,
     parallel: bool = True,
     scan_profile: Optional[str] = "quick",
-    options: Optional[ScanOptions] = None
+    options: Optional[ScanOptions] = None,
+    scan_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Full scan orchestrator with concurrency control and timeout.
@@ -40,6 +43,7 @@ async def run_full_scan(
         parallel: Run scans in parallel (True) or sequential (False)
         scan_profile: Scan profile name ('quick', 'full', 'network', 'custom')
         options: Optional ScanOptions overrides
+        scan_id: Optional scan ID for streaming telemetry
     
     Returns:
         Complete scan results with risk score, profile, and summary
@@ -56,6 +60,14 @@ async def run_full_scan(
         extra={"target": target, "profile": resolved_options['profile']}
     )
     
+    if scan_id:
+        await scan_event_bus.emit_log(
+            scan_id,
+            f"Orchestrator initialized scan for target {target} [Profile: {resolved_options['profile'].upper()}]",
+            stage=StreamStage.INIT,
+            level=StreamLogLevel.INFO
+        )
+    
     start_time = time.time()
     
     # Acquire semaphore for concurrency control
@@ -63,7 +75,7 @@ async def run_full_scan(
         try:
             # Global scan timeout wrapper
             scan_result = await asyncio.wait_for(
-                _execute_scan(nmap_target, nuclei_target, target, parallel, resolved_options),
+                _execute_scan(nmap_target, nuclei_target, target, parallel, resolved_options, scan_id),
                 timeout=settings.GLOBAL_SCAN_TIMEOUT
             )
             
@@ -77,6 +89,16 @@ async def run_full_scan(
                 f"vulns={scan_result.get('nuclei', {}).get('total_vulnerabilities', 0)}",
                 extra={"target": target, "duration": duration}
             )
+            
+            if scan_id:
+                final_status = scan_result.get("status", ScanStatus.COMPLETED.value)
+                await scan_event_bus.emit_log(
+                    scan_id,
+                    f"Scan execution finalized in {duration}s. Final status: {final_status.upper()}",
+                    stage=StreamStage.COMPLETE,
+                    level=StreamLogLevel.SUCCESS if final_status == ScanStatus.COMPLETED.value else StreamLogLevel.WARNING,
+                    event_name="done"
+                )
             
             return scan_result
         
@@ -128,7 +150,8 @@ async def _execute_scan(
     nuclei_target: str,
     original_target: str,
     parallel: bool,
-    resolved_options: Optional[Dict[str, Any]] = None
+    resolved_options: Optional[Dict[str, Any]] = None,
+    scan_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Internal scan execution logic.
@@ -145,28 +168,30 @@ async def _execute_scan(
     # ==================== PARALLEL MODE ====================
     if parallel:
         nmap_result, nuclei_result = await asyncio.gather(
-            run_nmap_scan(nmap_target, timing=nmap_timing, port_range=port_range),
+            run_nmap_scan(nmap_target, timing=nmap_timing, port_range=port_range, scan_id=scan_id),
             run_nuclei_scan(
                 nuclei_target,
                 tags=nuclei_tags,
                 templates=nuclei_templates,
                 severity_filter=severity_filter,
                 rate_limit=rate_limit,
-                concurrency=concurrency
+                concurrency=concurrency,
+                scan_id=scan_id
             ),
             return_exceptions=True
         )
     
     # ==================== SEQUENTIAL MODE ====================
     else:
-        nmap_result = await run_nmap_scan(nmap_target, timing=nmap_timing, port_range=port_range)
+        nmap_result = await run_nmap_scan(nmap_target, timing=nmap_timing, port_range=port_range, scan_id=scan_id)
         nuclei_result = await run_nuclei_scan(
             nuclei_target,
             tags=nuclei_tags,
             templates=nuclei_templates,
             severity_filter=severity_filter,
             rate_limit=rate_limit,
-            concurrency=concurrency
+            concurrency=concurrency,
+            scan_id=scan_id
         )
     
     # ==================== HANDLE EXCEPTIONS ====================
@@ -200,11 +225,27 @@ async def _execute_scan(
             "Consider skipping Nuclei for hosts with no open ports."
         )
 
+    if scan_id:
+        await scan_event_bus.emit_log(
+            scan_id,
+            f"Initiating AI risk modeling and vulnerability correlation for {original_target}...",
+            stage=StreamStage.AI,
+            level=StreamLogLevel.INFO
+        )
+
     try:
         analysis = await analyze_vulnerability_report(
             nmap_result=nmap_result,
             nuclei_result=nuclei_result
         )
+        if scan_id:
+            await scan_event_bus.emit_log(
+                scan_id,
+                f"AI Risk Assessment concluded: Risk Score {analysis['risk_score']}/10",
+                stage=StreamStage.AI,
+                level=StreamLogLevel.SUCCESS,
+                details=analysis.get("summary")
+            )
     except Exception as e:
         logger.error(f"AI analysis failed: {e}")
         analysis = {
