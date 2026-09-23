@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     # ==================== SCANNING ====================
     MAX_CONCURRENT_SCANS: int = 3
     GLOBAL_SCAN_TIMEOUT: int = 600  # 10 minutes total
+    DEFAULT_SCAN_PROFILE: str = "quick"
+    STREAM_LOG_BUFFER_SIZE: int = 1000
+    
+    # Report settings
+    REPORT_COMPANY_NAME: str = "XenoraSec Security"
+    REPORT_TITLE: str = "Automated Security Assessment Report"
     
     # Nmap settings
     NMAP_TIMEOUT: int = 180  # 3 minutes
