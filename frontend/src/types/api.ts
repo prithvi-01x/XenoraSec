@@ -49,6 +49,8 @@ export interface ScanResult {
     status: ScanStatus;
     risk_score: number;
     duration?: number;
+    scan_profile?: ScanProfile;
+    scan_options?: ScanOptions;
     summary: ScanSummary;
     nmap: NmapResult;
     nuclei: NucleiResult;
@@ -57,14 +59,63 @@ export interface ScanResult {
     error?: string;
 }
 
+export type ScanProfile = 'quick' | 'full' | 'network' | 'custom';
+
+export type ScanTiming = 'paranoid' | 'sneaky' | 'polite' | 'normal' | 'aggressive' | 'insane';
+
+export interface ScanOptions {
+    ports?: string;
+    timing?: ScanTiming;
+    service_detection?: boolean;
+    os_detection?: boolean;
+    tags?: string[];
+    exclude_tags?: string[];
+    severity?: Severity[];
+    rate_limit?: number;
+}
+
+export interface ProfileDefinition {
+    id: ScanProfile;
+    name: string;
+    description: string;
+    icon: string;
+    estimated_duration: string;
+    default_ports?: string;
+    default_tags?: string[];
+    is_custom?: boolean;
+}
+
+export interface TemplateTag {
+    id: string;
+    name: string;
+    description: string;
+    category: 'cve' | 'vulnerability' | 'exposure' | 'misconfig' | 'service';
+    count_estimate?: string;
+}
+
+export type ReportFormat = 'html' | 'pdf' | 'markdown' | 'json';
+export type ReportType = 'technical' | 'executive';
+
+export interface ScanLogEvent {
+    scan_id: string;
+    timestamp: string;
+    stage: 'init' | 'nmap' | 'nuclei' | 'ai' | 'completed' | 'failed';
+    level: 'info' | 'warn' | 'error' | 'success';
+    message: string;
+    metadata?: Record<string, any>;
+}
+
 export interface ScanCreateRequest {
     target: string;
+    scan_profile?: ScanProfile;
+    options?: ScanOptions;
 }
 
 export interface ScanCreateResponse {
     scan_id: string;
     target: string;
     status: ScanStatus;
+    scan_profile?: ScanProfile;
     message?: string;
 }
 
@@ -72,6 +123,7 @@ export interface ScanHistoryItem {
     scan_id: string;
     target: string;
     status: ScanStatus;
+    scan_profile?: string;
     risk_score: number;
     created_at: string;
     updated_at: string;
