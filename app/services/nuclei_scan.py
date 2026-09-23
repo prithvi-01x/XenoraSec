@@ -7,6 +7,8 @@ from typing import Dict, List, Any, Optional
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.schemas.scan import ScanStatus
+from app.schemas.stream import StreamLogLevel, StreamStage
+from app.services.event_bus import scan_event_bus
 
 logger = get_logger(__name__)
 
@@ -19,7 +21,7 @@ MAX_ERROR_LOGS = 5  # Maximum number of parse errors to log
 
 class NucleiScanner:
     """
-    Async Nuclei scanner with memory safety and buffer management.
+    Async Nuclei scanner with memory safety, buffer management, and live event streaming.
     """
     
     def __init__(
@@ -31,6 +33,7 @@ class NucleiScanner:
         tags: Optional[List[str]] = None,
         templates: Optional[List[str]] = None,
         concurrency: Optional[int] = None,
+        scan_id: Optional[str] = None,
     ):
         self.timeout = timeout or settings.NUCLEI_TIMEOUT
         self.rate_limit = rate_limit or settings.NUCLEI_RATE_LIMIT
@@ -42,6 +45,7 @@ class NucleiScanner:
         self.tags = tags
         self.templates = templates
         self.concurrency = concurrency
+        self.scan_id = scan_id
     
     async def scan(self, target: str) -> Dict[str, Any]:
         """
@@ -55,6 +59,15 @@ class NucleiScanner:
         """
         
         logger.info(f"Starting Nuclei scan: {target}", extra={"target": target})
+        
+        if self.scan_id:
+            tag_str = ", ".join(self.tags) if self.tags else "cve, misconfig, exposure"
+            await scan_event_bus.emit_log(
+                self.scan_id,
+                f"Starting Nuclei template audit on {target} (tags: [{tag_str}], rate_limit: {self.rate_limit})",
+                stage=StreamStage.NUCLEI,
+                level=StreamLogLevel.INFO
+            )
         
         # Optimize for localhost
         if "127.0.0.1" in target or "localhost" in target:
@@ -143,6 +156,20 @@ class NucleiScanner:
                         vuln = self._parse_vuln(data)
                         if vuln:
                             vulnerabilities.append(vuln)
+                            if self.scan_id:
+                                sev = vuln.get("severity", "info").lower()
+                                log_lvl = StreamLogLevel.INFO
+                                if sev in ["critical", "high"]:
+                                    log_lvl = StreamLogLevel.ERROR
+                                elif sev == "medium":
+                                    log_lvl = StreamLogLevel.WARNING
+                                await scan_event_bus.emit_log(
+                                    self.scan_id,
+                                    f"[{vuln.get('severity', 'info').upper()}] {vuln.get('name', 'Finding')} ({vuln.get('template_id', '')}) on {vuln.get('matched_at', target)}",
+                                    stage=StreamStage.NUCLEI,
+                                    level=log_lvl,
+                                    details=vuln
+                                )
                     except json.JSONDecodeError:
                         error_count += 1
                         if error_count <= MAX_ERROR_LOGS:  # Log first few errors only
@@ -260,6 +287,15 @@ class NucleiScanner:
             status = ScanStatus.PARTIAL.value
             logger.warning(f"High error rate in Nuclei scan: {error_count}/{line_count}")
         
+        if self.scan_id:
+            await scan_event_bus.emit_log(
+                self.scan_id,
+                f"Nuclei vulnerability scan finished on {target}: {len(vulnerabilities)} findings detected ({line_count} responses evaluated)",
+                stage=StreamStage.NUCLEI,
+                level=StreamLogLevel.SUCCESS if not vulnerabilities else StreamLogLevel.WARNING,
+                details={"total_vulnerabilities": len(vulnerabilities)}
+            )
+
         logger.info(
             f"Nuclei scan completed: {target} | vulns={len(vulnerabilities)}, lines={line_count}",
             extra={"target": target}
@@ -410,6 +446,7 @@ async def run_nuclei_scan(
     templates: Optional[List[str]] = None,
     rate_limit: Optional[int] = None,
     concurrency: Optional[int] = None,
+    scan_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Convenience function to run Nuclei scan.
@@ -422,6 +459,7 @@ async def run_nuclei_scan(
         templates: Optional list of specific template paths/IDs
         rate_limit: Optional request rate limit
         concurrency: Optional concurrent template executions
+        scan_id: Optional scan ID for streaming logs
     
     Returns:
         Scan results dictionary
@@ -433,5 +471,6 @@ async def run_nuclei_scan(
         templates=templates,
         rate_limit=rate_limit,
         concurrency=concurrency,
+        scan_id=scan_id,
     )
     return await scanner.scan(target)
