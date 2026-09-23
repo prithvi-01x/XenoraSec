@@ -101,6 +101,23 @@ class ScanEventBus:
             return list(self._buffers[scan_id])
         return []
 
+    def get_formatted_terminal_lines(self, scan_id: str) -> List[str]:
+        """
+        Retrieve formatted plain-text log lines for terminal view.
+        """
+        history = self.get_history(scan_id)
+        lines = []
+        for item in history:
+            evt = item.data
+            ts = evt.timestamp.strftime("%H:%M:%S")
+            stage_badge = f"[{evt.stage.value.upper()}]"
+            lines.append(f"{ts} {stage_badge:<10} {evt.message}")
+        return lines
+
+    def active_subscribers_count(self, scan_id: str) -> int:
+        """Count active listeners for a scan"""
+        return len(self._subscribers.get(scan_id, set()))
+
     def clear_scan(self, scan_id: str) -> None:
         """Clean up buffers and subscribers for a scan"""
         self._buffers.pop(scan_id, None)
