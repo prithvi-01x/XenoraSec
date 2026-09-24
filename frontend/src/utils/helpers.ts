@@ -70,7 +70,14 @@ export function formatDate(dateString: string): string {
 export interface TargetValidationResult {
     valid: boolean;
     error?: string;
-    targetType?: 'ipv4' | 'ipv6' | 'domain' | 'url' | 'localhost';
+    targetType?: 'ipv4' | 'ipv6' | 'domain' | 'url' | 'localhost' | 'cidr';
+    hostCount?: number;
+}
+
+export function isCidr(target: string): boolean {
+    if (!target || !target.includes('/')) return false;
+    const cidrRegex = /^(\d{1,3}\.){3}\d{1,3}\/(\d{1,2})$/;
+    return cidrRegex.test(target.trim());
 }
 
 export function validateTarget(target: string): TargetValidationResult {
@@ -80,6 +87,27 @@ export function validateTarget(target: string): TargetValidationResult {
 
     const trimmed = target.trim();
     const lower = trimmed.toLowerCase();
+
+    // Check CIDR subnet notation
+    if (trimmed.includes('/') && !lower.startsWith('http://') && !lower.startsWith('https://')) {
+        const cidrMatch = trimmed.match(/^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\/(\d{1,2})$/);
+        if (cidrMatch) {
+            const ipPart = cidrMatch[1];
+            const prefix = parseInt(cidrMatch[2], 10);
+            const octets = ipPart.split('.').map(Number);
+            if (octets.some((o) => isNaN(o) || o < 0 || o > 255)) {
+                return { valid: false, error: 'Invalid IP octet in CIDR subnet' };
+            }
+            if (prefix < 24 || prefix > 32) {
+                return {
+                    valid: false,
+                    error: `Subnet prefix /${prefix} exceeds policy limit (allowed: /24 to /32, max 254 hosts)`,
+                };
+            }
+            const hostCount = prefix === 32 ? 1 : prefix === 31 ? 2 : Math.pow(2, 32 - prefix) - 2;
+            return { valid: true, targetType: 'cidr', hostCount };
+        }
+    }
 
     // Check localhost
     if (lower === 'localhost' || lower.endsWith('.localhost')) {
@@ -147,7 +175,45 @@ export function validateTarget(target: string): TargetValidationResult {
 
     return { 
         valid: false, 
-        error: 'Invalid target format. Enter a valid IPv4/IPv6, domain (e.g. example.com), or URL (https://...)' 
+        error: 'Invalid target format. Enter a valid IPv4/IPv6, CIDR (/24-/32), domain, or URL' 
+    };
+}
+
+export function parseBatchTargetsPreview(input: string): {
+    totalEstimatedHosts: number;
+    rawCount: number;
+    cidrCount: number;
+    invalidTokens: string[];
+} {
+    if (!input || !input.trim()) {
+        return { totalEstimatedHosts: 0, rawCount: 0, cidrCount: 0, invalidTokens: [] };
+    }
+    const tokens = input
+        .split(/[\r\n,;\s]+/)
+        .map((t) => t.trim())
+        .filter(Boolean);
+
+    let totalEstimatedHosts = 0;
+    let cidrCount = 0;
+    const invalidTokens: string[] = [];
+
+    for (const token of tokens) {
+        const res = validateTarget(token);
+        if (!res.valid) {
+            invalidTokens.push(token);
+        } else if (res.targetType === 'cidr') {
+            cidrCount++;
+            totalEstimatedHosts += res.hostCount || 1;
+        } else {
+            totalEstimatedHosts += 1;
+        }
+    }
+
+    return {
+        totalEstimatedHosts,
+        rawCount: tokens.length,
+        cidrCount,
+        invalidTokens,
     };
 }
 
