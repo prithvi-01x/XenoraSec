@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.db.database import AsyncSessionLocal
 from app.db.crud import upsert_asset_from_scan, delete_asset
+from app.core.config import settings
 
 
 @pytest.fixture
@@ -14,7 +15,10 @@ def client():
 
 
 @pytest.mark.asyncio
-async def test_asset_routes_end_to_end(client):
+async def test_asset_routes_end_to_end(client, monkeypatch):
+    monkeypatch.setattr("app.core.security.resolve_hostname_ips", lambda h: ["10.20.30.40"])
+    monkeypatch.setattr(settings, "ALLOW_PRIVATE_IP_SCANNING", True)
+
     # 1. Seed an asset via scan ingestion
     sample_scan = {
         "nmap": {
@@ -95,11 +99,34 @@ async def test_asset_routes_end_to_end(client):
         assert patched["notes"] == "Internal gateway asset"
         assert "cloud" in patched["tags"]
 
-        # 6. Test GET non-existent asset 404
+        # 6. Test POST /api/assets/{id}/scan (on-demand scan triggering)
+        scan_launch_res = client.post(f"/api/assets/{asset_id}/scan")
+        assert scan_launch_res.status_code == 200
+        scan_data = scan_launch_res.json()
+        assert "scan_id" in scan_data
+        assert scan_data["target"] == "api-asset-test.local"
+        assert scan_data["status"] == "running"
+
+        # Test POST /api/assets/99999999/scan (404 not found)
+        missing_scan_res = client.post("/api/assets/99999999/scan")
+        assert missing_scan_res.status_code == 404
+
+        # Test POST /api/assets/{id}/scan (503 queue saturation)
+        from app.services import scanner_service
+        orig_queue_info = scanner_service.get_scan_queue_info
+        scanner_service.get_scan_queue_info = lambda: {"scans_running": 999, "max_concurrent_scans": 3, "available_slots": 0}
+        try:
+            full_res = client.post(f"/api/assets/{asset_id}/scan")
+            assert full_res.status_code == 503
+            assert "Maximum concurrent scans" in full_res.json()["detail"]
+        finally:
+            scanner_service.get_scan_queue_info = orig_queue_info
+
+        # 7. Test GET non-existent asset 404
         missing_res = client.get("/api/assets/99999999")
         assert missing_res.status_code == 404
 
-        # 7. Test DELETE /api/assets/{id}
+        # 8. Test DELETE /api/assets/{id}
         del_res = client.delete(f"/api/assets/{asset_id}")
         assert del_res.status_code == 200
         assert del_res.json()["asset_id"] == asset_id

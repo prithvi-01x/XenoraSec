@@ -156,6 +156,14 @@ async def scan_asset_endpoint(
     if not is_valid:
         raise HTTPException(status_code=400, detail=f"Target validation failed: {err_msg}")
 
+    from app.services.scanner_service import get_scan_queue_info
+    queue_info = get_scan_queue_info()
+    if queue_info["scans_running"] >= settings.MAX_CONCURRENT_SCANS:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Maximum concurrent scans ({settings.MAX_CONCURRENT_SCANS}) reached. Please try again later."
+        )
+
     scan_id = str(uuid4())
     scan = await create_scan(db, scan_id=scan_id, target=target, scan_profile="quick")
     if not scan:
