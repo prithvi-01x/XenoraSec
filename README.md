@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![React](https://img.shields.io/badge/React-18+-61DAFB.svg?logo=react&logoColor=black)](https://reactjs.org/)
+[![React](https://img.shields.io/badge/React-19+-61DAFB.svg?logo=react&logoColor=black)](https://reactjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5+-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3+-06B6D4.svg?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 [![Docker Ready](https://img.shields.io/badge/Docker-Ready-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com/)
@@ -59,7 +59,7 @@ Traditional security scanners either overwhelm security teams with disconnected 
 ```mermaid
 flowchart TB
     subgraph Client ["Client Layer (Browser & Mobile)"]
-        UI["React 18 + Vite SPA"]
+        UI["React 19 + Vite SPA"]
         TQ["TanStack Query (Auto-Polling & Cache)"]
         UI <--> TQ
     end
@@ -650,7 +650,7 @@ For on-premise, cloud VPS (AWS, GCP, DigitalOcean, Hetzner), or air-gapped deplo
                                  ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                     Frontend Nginx Proxy                        │
-│  - Serves compiled React 18 SPA static assets                   │
+│  - Serves compiled React 19 SPA static assets                   │
 │  - Gzip compression for JS/CSS bundles                          │
 │  - SPA fallback: try_files $uri $uri/ /index.html               │
 │  - Reverse Proxy: /api/* -> backend:8000                        │
@@ -733,7 +733,7 @@ XenoraSec incorporates an automated continuous integration and testing pipeline 
 
 ### 1. Multi-Version Python Matrix Testing
 - **Runtime Coverage**: Executes the full asynchronous backend test suite on both **Python 3.11** and **Python 3.12**.
-- **Pytest Suite Execution**: Runs 85+ unit, integration, and security regression tests covering SSRF prevention, Michaelis-Menten risk calculation, SQLite WAL concurrency, CIDR subnet expansion, batch queues, and Asset Inventory CRUD operations.
+- **Pytest Suite Execution**: Runs 97+ unit, integration, and security regression tests covering SSRF prevention, Michaelis-Menten risk calculation, SQLite WAL concurrency, CIDR subnet expansion, batch queues, and Asset Inventory CRUD operations.
 
 ### 2. Frontend Strict Verification
 - **Static Linting**: Runs ESLint (`npm run lint`) to enforce coding standards, hook dependencies, and prevent syntax anti-patterns.
