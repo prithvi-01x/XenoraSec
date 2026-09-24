@@ -99,6 +99,8 @@ async def init_db() -> None:
                         await conn.execute(text("ALTER TABLE scan_results ADD COLUMN scan_profile VARCHAR(50) DEFAULT 'quick'"))
                     if "scan_options" not in existing_cols:
                         await conn.execute(text("ALTER TABLE scan_results ADD COLUMN scan_options JSON"))
+                    if "batch_id" not in existing_cols:
+                        await conn.execute(text("ALTER TABLE scan_results ADD COLUMN batch_id VARCHAR(36)"))
         logger.info("Database tables initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
