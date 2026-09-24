@@ -109,3 +109,83 @@ def test_bracketed_ipv6_loopback():
     assert is_valid is True
     assert meta["hostname"] == "::1"
 
+
+def test_cidr_helpers():
+    from app.core.security import (
+        is_cidr_notation,
+        validate_cidr_network,
+        expand_cidr_target,
+        parse_multiple_targets,
+        TargetValidationError,
+    )
+
+    assert is_cidr_notation("192.168.1.0/28") is True
+    assert is_cidr_notation("10.0.0.1/32") is True
+    assert is_cidr_notation("example.com/api") is False
+    assert is_cidr_notation("192.168.1.1") is False
+
+    # Valid network
+    is_valid, err, net = validate_cidr_network("192.168.1.0/28")
+    assert is_valid is True
+    assert net is not None
+
+    # Oversized network (/16 is larger than allowed /24)
+    is_valid, err, net = validate_cidr_network("10.0.0.0/16")
+    assert is_valid is False
+    assert "exceeds maximum allowed size" in err
+
+    # Malformed CIDR
+    is_valid, err, net = validate_cidr_network("invalid/24")
+    assert is_valid is False
+    assert "Invalid CIDR" in err
+
+    # Expansion of /28 (16 IPs total, 14 usable hosts)
+    hosts = expand_cidr_target("192.168.1.0/28")
+    assert len(hosts) == 14
+    assert "192.168.1.1" in hosts
+    assert "192.168.1.14" in hosts
+    assert "192.168.1.0" not in hosts
+    assert "192.168.1.15" not in hosts
+
+    # /32 single host
+    hosts_32 = expand_cidr_target("192.168.1.50/32")
+    assert hosts_32 == ["192.168.1.50"]
+
+
+def test_parse_multiple_targets():
+    from app.core.security import parse_multiple_targets
+
+    raw = "example.com, 1.1.1.1\n8.8.8.8; 1.1.1.1"
+    parsed = parse_multiple_targets(raw)
+    assert parsed == ["example.com", "1.1.1.1", "8.8.8.8"]
+
+    # Multi-target with CIDR expansion
+    raw_with_cidr = "192.168.1.0/30\n8.8.8.8"
+    parsed_cidr = parse_multiple_targets(raw_with_cidr)
+    # /30 has 2 usable hosts (.1 and .2)
+    assert parsed_cidr == ["192.168.1.1", "192.168.1.2", "8.8.8.8"]
+
+
+def test_validate_target_cidr_policies():
+    # Private CIDR blocked by default
+    is_valid, err, meta = validate_target("192.168.1.0/28", allow_private=False)
+    assert is_valid is False
+    assert "private CIDR subnet" in err
+
+    # Private CIDR allowed when flag enabled
+    is_valid, err, meta = validate_target("192.168.1.0/28", allow_private=True)
+    assert is_valid is True
+    assert meta["is_cidr"] is True
+    assert len(meta["cidr_hosts"]) == 14
+
+    # Loopback CIDR blocked when allow_localhost=False
+    is_valid, err, meta = validate_target("127.0.0.0/28", allow_localhost=False)
+    assert is_valid is False
+    assert "localhost subnet" in err
+
+    # Oversized CIDR blocked
+    is_valid, err, meta = validate_target("10.0.0.0/16", allow_private=True)
+    assert is_valid is False
+    assert "exceeds maximum allowed size" in err
+
+
