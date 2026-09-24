@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, History, Settings, Shield, Menu, X } from 'lucide-react';
+import { LayoutDashboard, History, Settings, Shield, Menu, X, Server } from 'lucide-react';
 import { useQueueInfo } from '../hooks/useApi';
 
 interface LayoutProps {
@@ -14,6 +14,7 @@ export function Layout({ children }: LayoutProps) {
 
     const navItems = [
         { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
+        { path: '/assets', icon: Server, label: 'Asset Inventory' },
         { path: '/history', icon: History, label: 'History' },
         { path: '/settings', icon: Settings, label: 'Settings' },
     ];
