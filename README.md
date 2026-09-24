@@ -197,6 +197,54 @@ Targets can be supplied in flexible formats:
 
 ---
 
+## 🏢 Asset Inventory & Attack Surface Management
+
+XenoraSec transforms ephemeral scan results into a persistent, living Attack Surface Management (ASM) repository. Rather than losing port discoveries and CVE findings in isolated scan logs, assets are centrally tracked, classified, and monitored over time.
+
+### 1. Automated Finding Ingestion & Delta Sync
+Whenever any scan completes (whether launched individually or via a multi-target CIDR batch):
+- **Autonomous Indexing**: The backend service parses Nmap port tables and Nuclei vulnerability lists, automatically creating or updating asset records in the `assets` table.
+- **Idempotent Upsert Mechanics**: Repeated assessments of the same host do not clutter the database with duplicate assets. Instead, `upsert_asset_from_scan` performs an intelligent delta update:
+  - Updates host metadata (`last_scanned_at`, `risk_score`, severity distribution counters).
+  - Synchronizes open ports, updating service/version information and `last_seen` timestamps.
+  - Links discovered vulnerabilities, preserving `first_seen` audit history and marking re-confirmed CVEs.
+
+### 2. Relational Entity Architecture
+```text
+┌────────────────────────────────────────────────────────┐
+│                        Asset                           │
+│  - id: Integer (PK)                                    │
+│  - ip_address: String (Indexed)                        │
+│  - hostname: String (Nullable, Indexed)                │
+│  - asset_type: 'ip' | 'domain' | 'url' | 'cidr_host'   │
+│  - status: 'active' | 'scanned' | 'inactive'           │
+│  - criticality: 'low' | 'medium' | 'high' | 'critical' │
+│  - risk_score: Float (0.0 - 10.0)                      │
+│  - open_ports_count, vulns_count, severity counters    │
+│  - tags: JSON List / notes: Text                       │
+└───────────────────────────┬────────────────────────────┘
+                            │ 1:N Relationships (Cascade Delete)
+             ┌──────────────┴──────────────┐
+             ▼                             ▼
+┌─────────────────────────┐   ┌──────────────────────────────┐
+│       AssetPort         │   │      AssetVulnerability      │
+│ - port, protocol        │   │ - template_id, name          │
+│ - service, product      │   │ - severity, cvss, cve        │
+│ - version, last_seen    │   │ - matched_at, status         │
+└─────────────────────────┘   └──────────────────────────────┘
+```
+
+### 3. Asset Governance & Lifecycle Operations
+- **Business Criticality Classification**: Assign custom criticality levels (`critical`, `high`, `medium`, `low`) and organizational tags to prioritize remediation efforts on core infrastructure.
+- **Targeted Re-Scanning**: Re-trigger scans against any asset directly with one click via `POST /api/assets/{id}/scan`, automatically inheriting preferred scan profiles and options.
+- **Perimeter Metric Aggregation**: Rapidly query overall posture statistics with `GET /api/assets/stats`, returning real-time counts across asset types, risk bands, open ports, and active vulnerabilities.
+
+### 4. Enterprise Asset UI & Inspection Drawer
+- **Asset Command Center**: Dedicated `/assets` view featuring responsive filter controls, keyword search, criticality dropdowns, and tabular host matrices.
+- **Deep Service & CVE Inspection Drawer**: Click any asset row to open an interactive drawer displaying all exposed service versions (SSH, HTTP, Nginx, Envoy) and Nuclei CVE findings with direct external references.
+
+---
+
 ## 🧠 AI Risk Scoring & Saturation Model
 
 Security teams need risk scores that are both **contextually intelligent** and **mathematically predictable**. XenoraSec implements a hybrid evaluation system:
