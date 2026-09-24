@@ -24,13 +24,16 @@
 - [Key Features](#-key-features)
 - [Architecture & Workflow](#-architecture)
 - [Dual-Engine Scanning](#-dual-engine-scanning)
+- [Multi-Target & CIDR Subnet Scanning](#-multi-target--cidr-subnet-scanning)
+- [Asset Inventory & Attack Surface Management](#-asset-inventory--attack-surface-management)
 - [AI Risk Scoring Model](#-ai-risk-scoring-model)
 - [Security & Defensive Safeguards](#-security--defensive-safeguards)
 - [Database Architecture](#-database-architecture)
 - [REST API Reference](#-rest-api-reference)
 - [Environment Configuration](#-environment-configuration)
 - [Installation & Quick Start](#-quick-start)
-- [Production Deployment](#-production-deployment)
+- [Production Deployment (Docker & Nginx)](#-production-deployment)
+- [CI/CD Automation Pipeline](#-cicd-automation-pipeline)
 - [Frontend Tour & Mobile UX](#-frontend-tour--mobile-ux)
 - [Testing & Quality Assurance](#-testing--quality-assurance)
 - [Troubleshooting & FAQ](#-troubleshooting--faq)
@@ -156,6 +159,41 @@ XenoraSec integrates two premier security tools through asynchronous streaming w
 - **Adaptive Memory Ring-Buffer**: If the incoming stdout stream exceeds `MAX_BUFFER_SIZE` (1MB), the buffer automatically halves oldest data while retaining active line boundaries.
 - **Vulnerability Safety Cap**: Configurable limit (`MAX_VULNERABILITIES = 1000`) prevents Denial-of-Service attacks from honeypots or wildcard DNS servers returning infinite findings.
 - **Partial Health Classification**: If JSON decode errors exceed 20% of total lines emitted, the scan is flagged as `PARTIAL` rather than `FAILED`, preserving valid CVE and CWE discoveries.
+
+---
+
+## 🌐 Multi-Target & CIDR Subnet Scanning
+
+XenoraSec provides enterprise-grade mass scanning capabilities supporting both multi-target lists and standard IPv4 Classless Inter-Domain Routing (CIDR) subnet notations.
+
+### 1. Subnet Notation & Prefix Governance
+Network security teams frequently need to assess complete subnets or IP blocks without manually listing every host:
+- **Prefix Boundary Enforcement**: Accepts subnet prefixes from `/24` to `/32` (e.g., `192.168.1.0/28`).
+- **Defensive Prefix Guard**: To prevent accidental denial of service or resource exhaustion, subnets broader than `/24` (such as `/16` or `/8`) are rejected with an explicit validation error (`MAX_CIDR_PREFIX=24`, maximum 256 hosts).
+- **Usable Host Expansion**: Automatically calculates network boundaries, broadcasts, and usable host addresses:
+  - `/30`: 2 usable hosts
+  - `/29`: 6 usable hosts
+  - `/28`: 14 usable hosts
+  - `/26`: 62 usable hosts
+  - `/24`: 254 usable hosts
+  - `/31` & `/32`: Single/point-to-point host boundaries handled cleanly.
+
+### 2. Multi-Target List Ingestion & Sanitization
+Targets can be supplied in flexible formats:
+- **Delimiters**: Supports comma-delimited strings (`192.168.1.1, 192.168.1.2`), newline-separated lists, or mixed arrays combining domains, individual IPs, and CIDRs.
+- **De-duplication & Trimming**: Automatically removes whitespace, carriage returns, and duplicate entries.
+- **Per-Target Zero-Trust Validation**: Each expanded target in the batch independently traverses the SSRF, DNS resolution, and blacklist/whitelist gating rules before queue intake.
+
+### 3. Asynchronous Batch Queue & Concurrency Slots
+- **Non-Blocking Ingestion**: Calling `POST /api/scan/batch` dispatches scans across background workers and returns immediately with a unique `batch_id` and scan manifest.
+- **Controlled Worker Concurrency**: Scans are scheduled via `BATCH_CONCURRENCY` (default: 3) to prevent saturation of the host network interface and database threadpool.
+- **Live Progress Telemetry**: The status endpoint `GET /api/scan/batch/{batch_id}` provides real-time counts (`total`, `completed`, `running`, `failed`, `pending`) and the aggregated arithmetic mean risk score across all batch targets.
+
+### 4. Interactive Frontend Batch Management
+- **Target Mode Switcher**: Easily toggle between **Single Target** and **Multi-Target / Subnet** directly from the main `ScanPanel`.
+- **Quick-Fill CIDR Chips**: One-click helper chips (`/30`, `/29`, `/28`, `/24`) for rapid testing and automated mask insertion.
+- **Live Target Counter**: Real-time reactive preview displays the total number of detected valid targets, invalid targets, and estimated total scans before launching.
+- **Batch Telemetry Modal**: A real-time popup monitor tracking per-scan progress, live execution state badges, target links, and final risk score summaries.
 
 ---
 
