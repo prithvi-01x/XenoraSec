@@ -11,6 +11,14 @@ import type {
     TemplateTag,
     ReportFormat,
     ReportType,
+    AssetItem,
+    AssetDetail,
+    AssetListResponse,
+    AssetStats,
+    AssetUpdateRequest,
+    BatchScanCreateRequest,
+    BatchScanCreateResponse,
+    BatchScanStatusResponse,
 } from '../types/api';
 
 // API Base URL Configuration
@@ -170,6 +178,65 @@ export const dashboardApi = {
     // Get dashboard stats
     getStats: async (): Promise<DashboardStats> => {
         const response = await apiClient.get<DashboardStats>('/ui/api/dashboard-stats');
+        return response.data;
+    },
+};
+
+export const batchScanApi = {
+    // Start batch/CIDR scan
+    startBatchScan: async (data: BatchScanCreateRequest): Promise<BatchScanCreateResponse> => {
+        const response = await apiClient.post<BatchScanCreateResponse>('/api/scan/batch', data);
+        return response.data;
+    },
+
+    // Get batch scan progress
+    getBatchStatus: async (batchId: string): Promise<BatchScanStatusResponse> => {
+        const response = await apiClient.get<BatchScanStatusResponse>(`/api/scan/batch/${batchId}`);
+        return response.data;
+    },
+};
+
+export const assetApi = {
+    // Get paginated assets
+    getAssets: async (params?: {
+        limit?: number;
+        offset?: number;
+        search?: string;
+        asset_type?: string;
+        status?: string;
+        criticality?: string;
+        min_risk?: number;
+    }): Promise<AssetListResponse> => {
+        const response = await apiClient.get<AssetListResponse>('/api/assets', { params });
+        return response.data;
+    },
+
+    // Get asset statistics
+    getAssetStats: async (): Promise<AssetStats> => {
+        const response = await apiClient.get<AssetStats>('/api/assets/stats');
+        return response.data;
+    },
+
+    // Get detailed asset with ports and vulnerabilities
+    getAssetDetail: async (assetId: number): Promise<AssetDetail> => {
+        const response = await apiClient.get<AssetDetail>(`/api/assets/${assetId}`);
+        return response.data;
+    },
+
+    // Update asset metadata
+    updateAsset: async (assetId: number, data: AssetUpdateRequest): Promise<AssetItem> => {
+        const response = await apiClient.patch<AssetItem>(`/api/assets/${assetId}`, data);
+        return response.data;
+    },
+
+    // Delete asset from inventory
+    deleteAsset: async (assetId: number): Promise<void> => {
+        await apiClient.delete(`/api/assets/${assetId}`);
+    },
+
+    // Scan specific asset
+    scanAsset: async (assetId: number): Promise<ScanCreateResponse> => {
+        const response = await apiClient.post<ScanCreateResponse>(`/api/assets/${assetId}/scan`);
         return response.data;
     },
 };
