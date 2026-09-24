@@ -115,6 +115,13 @@ async def start_scan(
         logger.warning(f"Invalid target rejected: {payload.target} - {error_msg}")
         raise HTTPException(status_code=400, detail=error_msg)
     
+    if metadata.get("is_cidr"):
+        logger.warning(f"CIDR target submitted to single scan endpoint: {payload.target}")
+        raise HTTPException(
+            status_code=400,
+            detail="CIDR subnet targets must be scanned via the batch endpoint (/api/scan/batch)"
+        )
+    
     # Fix 2: Use atomic try-acquire instead of a racy available_slots check
     queue_info = get_scan_queue_info()
     if queue_info["scans_running"] >= settings.MAX_CONCURRENT_SCANS:

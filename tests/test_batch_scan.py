@@ -74,3 +74,10 @@ def test_batch_scan_validation_errors(client):
     # Non-existent batch
     res_404 = client.get("/api/scan/batch/non-existent-uuid")
     assert res_404.status_code == 404
+
+
+def test_single_scan_rejects_cidr_input(client, monkeypatch):
+    monkeypatch.setattr(settings, "ALLOW_PRIVATE_IP_SCANNING", True)
+    res = client.post("/api/scan/", json={"target": "192.168.1.0/28", "options": {"allow_private": True}})
+    assert res.status_code == 400
+    assert "batch" in res.json()["detail"].lower()
