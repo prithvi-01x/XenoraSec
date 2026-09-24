@@ -51,6 +51,7 @@ export interface ScanResult {
     duration?: number;
     scan_profile?: ScanProfile;
     scan_options?: ScanOptions;
+    batch_id?: string | null;
     summary: ScanSummary;
     nmap: NmapResult;
     nuclei: NucleiResult;
@@ -124,6 +125,7 @@ export interface ScanHistoryItem {
     target: string;
     status: ScanStatus;
     scan_profile?: string;
+    batch_id?: string | null;
     risk_score: number;
     created_at: string;
     updated_at: string;

@@ -120,6 +120,14 @@ export function HistoryPage() {
                                                         <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-cyber-blue/10 text-cyber-blue border border-cyber-blue/20 font-semibold">
                                                             {scan.scan_profile || 'quick'}
                                                         </span>
+                                                        {scan.batch_id && (
+                                                            <span
+                                                                className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/30 font-semibold"
+                                                                title={`Part of batch: ${scan.batch_id}`}
+                                                            >
+                                                                BATCH
+                                                            </span>
+                                                        )}
                                                     </div>
                                                     <div className="text-xs text-gray-400 font-mono mt-0.5">
                                                         {scan.scan_id.substring(0, 8)}...
