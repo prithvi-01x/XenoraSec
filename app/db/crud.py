@@ -1,15 +1,17 @@
 # app/db/crud.py
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc, and_, delete
+from sqlalchemy import select, func, desc, and_, or_, delete
+from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import SQLAlchemyError
 from typing import Optional, List, Tuple
 from datetime import datetime, UTC, timedelta
 
-from app.db.models import ScanResult
+from app.db.models import ScanResult, Asset, AssetPort, AssetVulnerability
 from app.schemas.scan import ScanStatus
 from app.core.logging import get_logger
 from app.core.config import settings
+from app.core.security import extract_hostname, resolve_hostname_ips, validate_ip_address
 
 logger = get_logger(__name__)
 
@@ -22,7 +24,8 @@ async def create_scan(
     target: str,
     parent_scan_id: Optional[str] = None,
     scan_profile: Optional[str] = "quick",
-    scan_options: Optional[dict] = None
+    scan_options: Optional[dict] = None,
+    batch_id: Optional[str] = None
 ) -> Optional[ScanResult]:
     """
     Create a new scan record in the database.
@@ -34,6 +37,7 @@ async def create_scan(
         parent_scan_id: Optional parent scan ID for retries
         scan_profile: Active scan profile ('quick', 'full', 'network', 'custom')
         scan_options: Serialized scan options and overrides
+        batch_id: Optional identifier grouping scans in a batch/CIDR run
     
     Returns:
         ScanResult object or None if creation fails
@@ -46,6 +50,7 @@ async def create_scan(
             risk_score=0.0,
             result=None,
             parent_scan_id=parent_scan_id,
+            batch_id=batch_id,
             scan_profile=scan_profile or "quick",
             scan_options=scan_options,
         )
@@ -54,7 +59,7 @@ async def create_scan(
         await db.commit()
         await db.refresh(scan)
         
-        logger.info(f"Created scan: {scan_id} for target: {target}")
+        logger.info(f"Created scan: {scan_id} for target: {target} (batch={batch_id})")
         return scan
         
     except SQLAlchemyError as e:
@@ -356,4 +361,349 @@ async def get_scan_statistics(db: AsyncSession) -> dict:
             "total_scans": 0,
             "status_counts": {},
             "average_risk_score": 0.0,
+        }
+
+
+# ==================== BATCH SCAN QUERIES ====================
+
+async def get_scans_by_batch(
+    db: AsyncSession,
+    batch_id: str
+) -> List[ScanResult]:
+    """Retrieve all scans belonging to a specific batch ID."""
+    try:
+        query = select(ScanResult).where(ScanResult.batch_id == batch_id).order_by(ScanResult.created_at.asc())
+        result = await db.execute(query)
+        return list(result.scalars().all())
+    except SQLAlchemyError as e:
+        logger.error(f"Failed to get scans for batch {batch_id}: {e}")
+        return []
+
+
+# ==================== ASSET INVENTORY CRUD ====================
+
+async def upsert_asset_from_scan(
+    db: AsyncSession,
+    target: str,
+    scan_result: dict,
+    risk_score: float
+) -> Optional[Asset]:
+    """
+    Ingest scan results into the Asset Inventory.
+    Creates or updates the asset, associated open ports, and discovered vulnerabilities.
+    """
+    try:
+        hostname, scheme = extract_hostname(target)
+        is_ip, _ = validate_ip_address(hostname)
+
+        if is_ip:
+            ip_addr = hostname
+            asset_host = None
+            asset_type = "ip"
+        else:
+            asset_host = hostname
+            resolved = resolve_hostname_ips(hostname)
+            ip_addr = resolved[0] if resolved else hostname
+            asset_type = "url" if scheme else "domain"
+
+        # Find existing asset by IP or hostname
+        stmt = select(Asset).where(
+            or_(
+                Asset.ip_address == ip_addr,
+                and_(Asset.hostname.is_not(None), Asset.hostname == asset_host) if asset_host else False
+            )
+        )
+        res = await db.execute(stmt)
+        asset = res.scalar_one_or_none()
+
+        if not asset:
+            asset = Asset(
+                ip_address=ip_addr,
+                hostname=asset_host,
+                asset_type=asset_type,
+                status="active",
+                criticality="medium",
+                risk_score=risk_score,
+                last_scanned_at=datetime.now(UTC)
+            )
+            db.add(asset)
+            await db.flush()
+        else:
+            asset.risk_score = max(asset.risk_score, risk_score)
+            asset.last_scanned_at = datetime.now(UTC)
+            if asset_host and not asset.hostname:
+                asset.hostname = asset_host
+            if asset.asset_type == "ip" and asset_type != "ip":
+                asset.asset_type = asset_type
+
+        # Upsert discovered ports
+        nmap_ports = scan_result.get("nmap", {}).get("ports", [])
+        if isinstance(nmap_ports, list):
+            for p in nmap_ports:
+                if isinstance(p, dict) and "port" in p:
+                    port_num = p["port"]
+                    proto = p.get("protocol", "tcp")
+                    p_query = select(AssetPort).where(
+                        and_(AssetPort.asset_id == asset.id, AssetPort.port == port_num, AssetPort.protocol == proto)
+                    )
+                    p_res = await db.execute(p_query)
+                    port_rec = p_res.scalar_one_or_none()
+                    if port_rec:
+                        port_rec.service = p.get("service") or port_rec.service
+                        port_rec.product = p.get("product") or port_rec.product
+                        port_rec.version = p.get("version") or port_rec.version
+                        port_rec.last_seen = datetime.now(UTC)
+                    else:
+                        new_port = AssetPort(
+                            asset_id=asset.id,
+                            port=port_num,
+                            protocol=proto,
+                            service=p.get("service"),
+                            product=p.get("product"),
+                            version=p.get("version"),
+                            last_seen=datetime.now(UTC)
+                        )
+                        db.add(new_port)
+
+        # Upsert discovered vulnerabilities
+        nuclei_vulns = scan_result.get("nuclei", {}).get("vulnerabilities", [])
+        if isinstance(nuclei_vulns, list):
+            for v in nuclei_vulns:
+                if isinstance(v, dict):
+                    v_name = v.get("name") or "Unknown Finding"
+                    t_id = v.get("template_id")
+                    v_query = select(AssetVulnerability).where(
+                        and_(AssetVulnerability.asset_id == asset.id, AssetVulnerability.template_id == t_id, AssetVulnerability.name == v_name)
+                    )
+                    v_res = await db.execute(v_query)
+                    vuln_rec = v_res.scalar_one_or_none()
+                    if vuln_rec:
+                        vuln_rec.severity = v.get("severity") or vuln_rec.severity
+                        vuln_rec.cve = v.get("cve") or vuln_rec.cve
+                        vuln_rec.cvss = v.get("cvss") or vuln_rec.cvss
+                        vuln_rec.matched_at = v.get("matched_at") or vuln_rec.matched_at
+                        vuln_rec.last_seen = datetime.now(UTC)
+                        vuln_rec.status = "open"
+                    else:
+                        new_vuln = AssetVulnerability(
+                            asset_id=asset.id,
+                            template_id=t_id,
+                            name=v_name,
+                            severity=str(v.get("severity", "info")).lower(),
+                            cve=v.get("cve"),
+                            cvss=v.get("cvss"),
+                            matched_at=v.get("matched_at"),
+                            status="open",
+                            first_seen=datetime.now(UTC),
+                            last_seen=datetime.now(UTC)
+                        )
+                        db.add(new_vuln)
+
+        await db.flush()
+
+        # Update aggregated statistics on the Asset row
+        ports_count_res = await db.execute(select(func.count(AssetPort.id)).where(AssetPort.asset_id == asset.id))
+        asset.open_ports_count = ports_count_res.scalar() or 0
+
+        vulns_count_res = await db.execute(
+            select(func.count(AssetVulnerability.id)).where(
+                and_(AssetVulnerability.asset_id == asset.id, AssetVulnerability.status == "open")
+            )
+        )
+        asset.vulnerabilities_count = vulns_count_res.scalar() or 0
+
+        sev_query = select(AssetVulnerability.severity, func.count(AssetVulnerability.id)).where(
+            and_(AssetVulnerability.asset_id == asset.id, AssetVulnerability.status == "open")
+        ).group_by(AssetVulnerability.severity)
+        sev_res = await db.execute(sev_query)
+        sev_counts = {row[0].lower(): row[1] for row in sev_res.all()}
+
+        asset.critical_count = sev_counts.get("critical", 0)
+        asset.high_count = sev_counts.get("high", 0)
+        asset.medium_count = sev_counts.get("medium", 0)
+        asset.low_count = sev_counts.get("low", 0)
+
+        # Elevate criticality rating based on findings
+        if asset.critical_count > 0:
+            asset.criticality = "critical"
+        elif asset.high_count > 0:
+            asset.criticality = "high"
+        elif asset.medium_count > 0:
+            asset.criticality = "medium"
+
+        await db.commit()
+        await db.refresh(asset)
+        logger.info(f"Asset indexed: {asset.ip_address} (host={asset.hostname}, vulns={asset.vulnerabilities_count})")
+        return asset
+
+    except SQLAlchemyError as e:
+        await db.rollback()
+        logger.error(f"Failed to upsert asset from scan: {e}")
+        return None
+
+
+async def get_assets(
+    db: AsyncSession,
+    limit: int = 50,
+    offset: int = 0,
+    search: Optional[str] = None,
+    asset_type: Optional[str] = None,
+    status: Optional[str] = None,
+    criticality: Optional[str] = None,
+    min_risk: Optional[float] = None
+) -> Tuple[List[Asset], int]:
+    """Retrieve filtered and paginated assets."""
+    try:
+        query = select(Asset)
+        count_query = select(func.count(Asset.id))
+
+        filters = []
+        if search:
+            escaped = search.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+            filters.append(
+                or_(
+                    Asset.ip_address.like(f"%{escaped}%", escape='\\'),
+                    Asset.hostname.like(f"%{escaped}%", escape='\\')
+                )
+            )
+        if asset_type:
+            filters.append(Asset.asset_type == asset_type)
+        if status:
+            filters.append(Asset.status == status)
+        if criticality:
+            filters.append(Asset.criticality == criticality)
+        if min_risk is not None:
+            filters.append(Asset.risk_score >= min_risk)
+
+        if filters:
+            query = query.where(and_(*filters))
+            count_query = count_query.where(and_(*filters))
+
+        total_res = await db.execute(count_query)
+        total = total_res.scalar() or 0
+
+        query = query.order_by(desc(Asset.risk_score), desc(Asset.updated_at)).limit(limit).offset(offset)
+        result = await db.execute(query)
+        assets = result.scalars().all()
+
+        return list(assets), total
+
+    except SQLAlchemyError as e:
+        logger.error(f"Failed to get assets: {e}")
+        return [], 0
+
+
+async def get_asset_by_id(
+    db: AsyncSession,
+    asset_id: int
+) -> Optional[Asset]:
+    """Retrieve single asset by ID with pre-loaded ports and vulnerabilities."""
+    try:
+        query = (
+            select(Asset)
+            .options(selectinload(Asset.ports), selectinload(Asset.vulnerabilities))
+            .where(Asset.id == asset_id)
+        )
+        res = await db.execute(query)
+        return res.scalar_one_or_none()
+    except SQLAlchemyError as e:
+        logger.error(f"Failed to get asset {asset_id}: {e}")
+        return None
+
+
+async def update_asset(
+    db: AsyncSession,
+    asset_id: int,
+    criticality: Optional[str] = None,
+    status: Optional[str] = None,
+    tags: Optional[List[str]] = None,
+    notes: Optional[str] = None
+) -> Optional[Asset]:
+    """Update metadata for an asset."""
+    try:
+        asset = await get_asset_by_id(db, asset_id)
+        if not asset:
+            return None
+
+        if criticality:
+            asset.criticality = criticality
+        if status:
+            asset.status = status
+        if tags is not None:
+            asset.tags = tags
+        if notes is not None:
+            asset.notes = notes
+
+        asset.updated_at = datetime.now(UTC)
+        await db.commit()
+        await db.refresh(asset)
+        return asset
+
+    except SQLAlchemyError as e:
+        await db.rollback()
+        logger.error(f"Failed to update asset {asset_id}: {e}")
+        return None
+
+
+async def delete_asset(
+    db: AsyncSession,
+    asset_id: int
+) -> bool:
+    """Delete an asset and cascade delete associated ports and vulnerabilities."""
+    try:
+        asset = await get_asset_by_id(db, asset_id)
+        if not asset:
+            return False
+
+        await db.delete(asset)
+        await db.commit()
+        return True
+
+    except SQLAlchemyError as e:
+        await db.rollback()
+        logger.error(f"Failed to delete asset {asset_id}: {e}")
+        return False
+
+
+async def get_asset_statistics(db: AsyncSession) -> dict:
+    """Compute aggregated metrics across all assets in the inventory."""
+    try:
+        total_assets = (await db.execute(select(func.count(Asset.id)))).scalar() or 0
+        active_assets = (
+            await db.execute(select(func.count(Asset.id)).where(Asset.status == "active"))
+        ).scalar() or 0
+        critical_risk = (
+            await db.execute(select(func.count(Asset.id)).where(Asset.risk_score >= 7.0))
+        ).scalar() or 0
+
+        total_ports = (await db.execute(select(func.count(AssetPort.id)))).scalar() or 0
+        total_vulns = (
+            await db.execute(select(func.count(AssetVulnerability.id)).where(AssetVulnerability.status == "open"))
+        ).scalar() or 0
+
+        type_res = await db.execute(select(Asset.asset_type, func.count(Asset.id)).group_by(Asset.asset_type))
+        type_dist = {row[0]: row[1] for row in type_res.all()}
+
+        crit_res = await db.execute(select(Asset.criticality, func.count(Asset.id)).group_by(Asset.criticality))
+        crit_dist = {row[0]: row[1] for row in crit_res.all()}
+
+        return {
+            "total_assets": total_assets,
+            "active_assets": active_assets,
+            "critical_risk_assets": critical_risk,
+            "total_open_ports": total_ports,
+            "total_vulnerabilities": total_vulns,
+            "asset_type_distribution": type_dist,
+            "criticality_distribution": crit_dist,
+        }
+    except SQLAlchemyError as e:
+        logger.error(f"Failed to compute asset statistics: {e}")
+        return {
+            "total_assets": 0,
+            "active_assets": 0,
+            "critical_risk_assets": 0,
+            "total_open_ports": 0,
+            "total_vulnerabilities": 0,
+            "asset_type_distribution": {},
+            "criticality_distribution": {},
         }
