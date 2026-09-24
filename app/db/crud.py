@@ -414,7 +414,7 @@ async def upsert_asset_from_scan(
             )
         )
         res = await db.execute(stmt)
-        asset = res.scalar_one_or_none()
+        asset = res.scalars().first()
 
         if not asset:
             asset = Asset(
@@ -447,7 +447,7 @@ async def upsert_asset_from_scan(
                         and_(AssetPort.asset_id == asset.id, AssetPort.port == port_num, AssetPort.protocol == proto)
                     )
                     p_res = await db.execute(p_query)
-                    port_rec = p_res.scalar_one_or_none()
+                    port_rec = p_res.scalars().first()
                     if port_rec:
                         port_rec.service = p.get("service") or port_rec.service
                         port_rec.product = p.get("product") or port_rec.product
@@ -476,7 +476,7 @@ async def upsert_asset_from_scan(
                         and_(AssetVulnerability.asset_id == asset.id, AssetVulnerability.template_id == t_id, AssetVulnerability.name == v_name)
                     )
                     v_res = await db.execute(v_query)
-                    vuln_rec = v_res.scalar_one_or_none()
+                    vuln_rec = v_res.scalars().first()
                     if vuln_rec:
                         vuln_rec.severity = v.get("severity") or vuln_rec.severity
                         vuln_rec.cve = v.get("cve") or vuln_rec.cve
