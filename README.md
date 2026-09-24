@@ -651,6 +651,48 @@ The application will be accessible at **`http://localhost`** (or your server's I
 
 ---
 
+## 🔄 CI/CD Automation Pipeline
+
+XenoraSec incorporates an automated continuous integration and testing pipeline orchestrated via **GitHub Actions** (`.github/workflows/ci.yml`). Every commit and pull request targeting the `main` branch undergoes automated matrix validation:
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                 GitHub Actions CI Workflow                  │
+└──────────────┬───────────────────────────────┬──────────────┘
+               │                               │
+        ┌──────▼──────┐                 ┌──────▼──────┐
+        │ Backend CI  │                 │ Frontend CI │
+        └──────┬──────┘                 └──────┬──────┘
+               │                               │
+    ├─ Python 3.11 Matrix           ├─ Node.js 20 Setup
+    ├─ Python 3.12 Matrix           ├─ Dependency Cache
+    ├─ pip Dependencies             ├─ ESLint Verification (npm run lint)
+    └─ Pytest Suite (pytest -v)     ├─ TypeScript Strict Check (tsc -b)
+                                    └─ Production Bundle (npm run build)
+               │                               │
+               └───────────────┬───────────────┘
+                               │
+                        ┌──────▼──────┐
+                        │ Compose CI  │
+                        └──────┬──────┘
+                               │
+                        └─ Docker Compose Validation (docker compose config)
+```
+
+### 1. Multi-Version Python Matrix Testing
+- **Runtime Coverage**: Executes the full asynchronous backend test suite on both **Python 3.11** and **Python 3.12**.
+- **Pytest Suite Execution**: Runs 85+ unit, integration, and security regression tests covering SSRF prevention, Michaelis-Menten risk calculation, SQLite WAL concurrency, CIDR subnet expansion, batch queues, and Asset Inventory CRUD operations.
+
+### 2. Frontend Strict Verification
+- **Static Linting**: Runs ESLint (`npm run lint`) to enforce coding standards, hook dependencies, and prevent syntax anti-patterns.
+- **TypeScript Type Verification**: Executes `tsc -b` in strict mode to guarantee zero type errors or broken interfaces across API clients, hooks, and views.
+- **Production Asset Compilation**: Bundles the application using Vite (`npm run build`) to ensure client assets compile with zero minification errors or broken module imports.
+
+### 3. Container Configuration Validation
+- Validates `docker-compose.yml` syntax and environment variable interpolation using `docker compose config`, ensuring deployment configurations stay robust.
+
+---
+
 ## 💻 Frontend Tour & Mobile Responsiveness
 
 The XenoraSec frontend is built with React 18, TypeScript, and Tailwind CSS to deliver an ultra-fast, responsive security operations dashboard:
