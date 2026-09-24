@@ -16,7 +16,11 @@ from app.schemas.scan import (
     ScanHistoryResponse,
     ScanOptions,
     ScanStatus,
-    ErrorResponse
+    ErrorResponse,
+    BatchScanCreateRequest,
+    BatchScanCreateResponse,
+    BatchScanStatusResponse,
+    BatchScanItem,
 )
 from app.db.database import get_db, AsyncSessionLocal
 from app.db.crud import (
@@ -27,7 +31,8 @@ from app.db.crud import (
     get_scan_history,
     delete_scan,
     cleanup_old_scans,
-    upsert_asset_from_scan
+    upsert_asset_from_scan,
+    get_scans_by_batch,
 )
 from app.services.scanner_service import run_full_scan, get_scan_queue_info
 from app.services.profile_service import get_available_profiles, get_available_tags, resolve_scan_options
@@ -39,7 +44,7 @@ from app.services.report_service import (
     generate_html_report,
     generate_pdf_report,
 )
-from app.core.security import validate_target, sanitize_scan_id, TargetValidationError
+from app.core.security import validate_target, sanitize_scan_id, TargetValidationError, parse_multiple_targets
 from app.core.rate_limit import check_rate_limit
 from app.core.logging import get_logger
 from app.core.config import settings
@@ -164,6 +169,181 @@ async def start_scan(
         target=payload.target,
         status=ScanStatus.RUNNING,
         scan_profile=profile
+    )
+
+
+# ==================== BATCH & CIDR SCANNING ====================
+
+@router.post(
+    "/batch",
+    response_model=BatchScanCreateResponse,
+    dependencies=[Depends(check_rate_limit)],
+    responses={
+        400: {"model": ErrorResponse},
+        429: {"model": ErrorResponse},
+    }
+)
+async def start_batch_scan(
+    payload: BatchScanCreateRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Launch a batch vulnerability scan across multiple hosts, domains, or CIDR subnets.
+    Automatically expands CIDR notation into host lists.
+    """
+    target_inputs = []
+    if payload.targets:
+        target_inputs.extend(payload.targets)
+    if payload.raw_targets:
+        target_inputs.append(payload.raw_targets)
+
+    if not target_inputs:
+        raise HTTPException(status_code=400, detail="No targets provided in batch request")
+
+    # Combine and parse with CIDR expansion
+    combined_raw = "\n".join(target_inputs)
+    try:
+        candidate_targets = parse_multiple_targets(combined_raw, max_targets=settings.MAX_BATCH_TARGETS)
+    except TargetValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not candidate_targets:
+        raise HTTPException(status_code=400, detail="No valid target strings found to scan")
+
+    # Resolve security allowances
+    if payload.options and payload.options.allow_private:
+        allow_private = settings.ALLOW_PRIVATE_IP_SCANNING and payload.options.allow_private
+    else:
+        allow_private = False
+
+    if payload.options and not payload.options.allow_localhost:
+        allow_localhost = False
+    elif not settings.ALLOW_LOCALHOST_SCANNING:
+        allow_localhost = False
+    else:
+        allow_localhost = True
+
+    valid_targets = []
+    skipped_targets = []
+
+    for t in candidate_targets:
+        is_valid, err, meta = validate_target(t, allow_private=allow_private, allow_localhost=allow_localhost)
+        if is_valid:
+            valid_targets.append((t, meta))
+        else:
+            skipped_targets.append({"target": t, "reason": err or "Validation failed"})
+
+    if not valid_targets:
+        raise HTTPException(
+            status_code=400,
+            detail=f"All {len(candidate_targets)} targets were rejected. Reasons: {skipped_targets[:3]}"
+        )
+
+    batch_id = str(uuid4())
+    profile = (
+        payload.scan_profile.value
+        if hasattr(payload.scan_profile, "value")
+        else (payload.scan_profile or "quick")
+    )
+    scan_opts = payload.options.model_dump() if payload.options else None
+
+    created_scans = []
+    for target_str, meta in valid_targets:
+        scan_id = str(uuid4())
+        scan = await create_scan(
+            db=db,
+            scan_id=scan_id,
+            target=target_str,
+            scan_profile=profile,
+            scan_options=scan_opts,
+            batch_id=batch_id
+        )
+        if scan:
+            created_scans.append(
+                BatchScanItem(
+                    scan_id=scan_id,
+                    target=target_str,
+                    status=ScanStatus.RUNNING
+                )
+            )
+            task = asyncio.create_task(
+                _run_and_store_scan(
+                    scan_id=scan_id,
+                    target=target_str,
+                    metadata=meta,
+                    scan_profile=profile,
+                    options=payload.options
+                )
+            )
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
+
+    logger.info(
+        f"Batch scan started: {batch_id} with {len(created_scans)} targets (profile={profile})"
+    )
+
+    return BatchScanCreateResponse(
+        batch_id=batch_id,
+        batch_name=payload.batch_name,
+        total_targets=len(valid_targets),
+        created_scans=created_scans,
+        skipped_targets=skipped_targets,
+        message=f"Queued {len(created_scans)} target scans in batch {batch_id}"
+    )
+
+
+@router.get(
+    "/batch/{batch_id}",
+    response_model=BatchScanStatusResponse,
+    responses={404: {"model": ErrorResponse}}
+)
+async def get_batch_scan_status(
+    batch_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get aggregated progress and individual scan statuses for a batch scan run.
+    """
+    scans = await get_scans_by_batch(db, batch_id)
+    if not scans:
+        raise HTTPException(status_code=404, detail="Batch scan not found")
+
+    total = len(scans)
+    completed = sum(1 for s in scans if s.status == ScanStatus.COMPLETED.value)
+    running = sum(1 for s in scans if s.status == ScanStatus.RUNNING.value)
+    failed = sum(1 for s in scans if s.status in [ScanStatus.FAILED.value, ScanStatus.TIMEOUT.value])
+    pending = total - (completed + running + failed)
+
+    scan_items = []
+    risk_scores = []
+    for s in scans:
+        status_val = ScanStatus(s.status) if s.status in [m.value for m in ScanStatus] else ScanStatus.FAILED
+        scan_items.append(
+            BatchScanItem(
+                scan_id=s.scan_id,
+                target=s.target,
+                status=status_val,
+                risk_score=s.risk_score or 0.0,
+                duration=s.duration,
+                error=s.error_message
+            )
+        )
+        if s.risk_score:
+            risk_scores.append(s.risk_score)
+
+    avg_risk = round(sum(risk_scores) / len(risk_scores), 2) if risk_scores else 0.0
+
+    return BatchScanStatusResponse(
+        batch_id=batch_id,
+        total=total,
+        completed=completed,
+        running=running,
+        failed=failed,
+        pending=max(0, pending),
+        scans=scan_items,
+        overall_risk_score=avg_risk,
+        created_at=scans[0].created_at if scans else None
     )
 
 
