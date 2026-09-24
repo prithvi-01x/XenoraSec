@@ -3,7 +3,7 @@
 import re
 import socket
 import ipaddress
-from typing import Tuple, Optional, List
+from typing import Tuple, Optional, List, Union
 from urllib.parse import urlparse
 from app.core.config import settings
 from app.core.logging import get_logger
@@ -39,6 +39,110 @@ def is_private_ip(ip: str) -> bool:
         )
     except ValueError:
         return False
+
+
+def is_cidr_notation(target: str) -> bool:
+    """Check if string has CIDR notation (e.g. 192.168.1.0/28 or fd00::/120)"""
+    if not target or "/" not in target:
+        return False
+    parts = target.strip().split("/")
+    if len(parts) != 2:
+        return False
+    try:
+        ipaddress.ip_network(target.strip(), strict=False)
+        return True
+    except ValueError:
+        return False
+
+
+def validate_cidr_network(
+    target: str
+) -> Tuple[bool, Optional[str], Optional[Union[ipaddress.IPv4Network, ipaddress.IPv6Network]]]:
+    """Validate CIDR network string and enforce prefix size limits."""
+    try:
+        network = ipaddress.ip_network(target.strip(), strict=False)
+    except ValueError as e:
+        return False, f"Invalid CIDR notation: {e}", None
+
+    if network.version == 4:
+        if network.prefixlen < settings.MAX_CIDR_PREFIX:
+            return (
+                False,
+                f"Subnet prefix /{network.prefixlen} exceeds maximum allowed size (limit: /{settings.MAX_CIDR_PREFIX}, max 256 addresses)",
+                None
+            )
+    elif network.version == 6:
+        # IPv6 /120 is 256 addresses
+        if network.prefixlen < 120:
+            return (
+                False,
+                f"IPv6 subnet prefix /{network.prefixlen} exceeds maximum allowed size (limit: /120, max 256 addresses)",
+                None
+            )
+
+    return True, None, network
+
+
+def expand_cidr_target(cidr_str: str, max_hosts: Optional[int] = None) -> List[str]:
+    """
+    Expand a CIDR network into a list of individual host IP strings.
+    For standard IPv4 subnets (prefix < 31), skips network and broadcast addresses.
+    """
+    is_valid, err, network = validate_cidr_network(cidr_str)
+    if not is_valid or network is None:
+        raise TargetValidationError(err or "Invalid CIDR network")
+
+    limit = max_hosts or settings.MAX_BATCH_TARGETS
+
+    if network.version == 4 and network.prefixlen < 31:
+        hosts = [str(ip) for ip in network.hosts()]
+    else:
+        hosts = [str(ip) for ip in network]
+
+    if len(hosts) > limit:
+        raise TargetValidationError(
+            f"Expanded CIDR targets ({len(hosts)}) exceeds maximum batch limit of {limit}"
+        )
+
+    return hosts
+
+
+def parse_multiple_targets(raw_input: str, max_targets: Optional[int] = None) -> List[str]:
+    """
+    Parse a string containing multiple targets separated by commas, newlines, semicolons, or whitespace.
+    Automatically expands any CIDR subnet entries and deduplicates targets while preserving order.
+    """
+    limit = max_targets or settings.MAX_BATCH_TARGETS
+    if not raw_input or not isinstance(raw_input, str):
+        return []
+
+    tokens = re.split(r'[\r\n,;\s]+', raw_input.strip())
+    cleaned = [t.strip() for t in tokens if t.strip()]
+
+    expanded_targets: List[str] = []
+    seen = set()
+
+    for token in cleaned:
+        if is_cidr_notation(token):
+            sub_hosts = expand_cidr_target(token, max_hosts=limit)
+            for h in sub_hosts:
+                if h not in seen:
+                    seen.add(h)
+                    expanded_targets.append(h)
+                    if len(expanded_targets) > limit:
+                        raise TargetValidationError(
+                            f"Total parsed targets exceeds maximum batch limit of {limit}"
+                        )
+        else:
+            if token not in seen:
+                seen.add(token)
+                expanded_targets.append(token)
+                if len(expanded_targets) > limit:
+                    raise TargetValidationError(
+                        f"Total parsed targets exceeds maximum batch limit of {limit}"
+                    )
+
+    return expanded_targets
 
 
 def resolve_hostname_ips(hostname: str) -> List[str]:
@@ -137,8 +241,34 @@ def validate_target(
         "original_target": target
     }
     
+    # Check if target is a CIDR notation
+    if is_cidr_notation(hostname):
+        is_valid_cidr, cidr_err, network = validate_cidr_network(hostname)
+        if not is_valid_cidr or network is None:
+            return False, cidr_err or "Invalid CIDR notation", metadata
+
+        try:
+            hosts = expand_cidr_target(hostname)
+        except TargetValidationError as e:
+            return False, str(e), metadata
+
+        metadata["is_cidr"] = True
+        metadata["is_ip"] = True
+        metadata["cidr"] = str(network)
+        metadata["cidr_hosts"] = hosts
+        metadata["resolved_ips"] = hosts
+
+        if network.is_loopback:
+            metadata["is_private"] = True
+            if not allow_localhost:
+                return False, f"Scanning localhost subnet ({hostname}) is not allowed", metadata
+        elif network.is_private:
+            metadata["is_private"] = True
+            if not allow_private:
+                return False, f"Scanning private CIDR subnet ({hostname}) is not allowed", metadata
+
     # Check explicit localhost hostnames first
-    if hostname_clean == "localhost" or hostname_clean.endswith(".localhost"):
+    elif hostname_clean == "localhost" or hostname_clean.endswith(".localhost"):
         metadata["is_private"] = True
         metadata["resolved_ips"] = ["127.0.0.1"]
         if not allow_localhost:
