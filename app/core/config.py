@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     GLOBAL_SCAN_TIMEOUT: int = 600  # 10 minutes total
     DEFAULT_SCAN_PROFILE: str = "quick"
     STREAM_LOG_BUFFER_SIZE: int = 1000
+    MAX_CIDR_PREFIX: int = 24  # Subnet prefix limit: max /24 (at most 256 addresses)
+    MAX_BATCH_TARGETS: int = 256  # Safety cap for batch and CIDR target expansion
+    BATCH_CONCURRENCY: int = 3
     
     # Report settings
     REPORT_COMPANY_NAME: str = "XenoraSec Security"
