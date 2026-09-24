@@ -1,6 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { scanApi, dashboardApi, healthApi } from '../api/client';
-import type { ScanCreateRequest, ReportFormat, ReportType } from '../types/api';
+import { scanApi, dashboardApi, healthApi, batchScanApi, assetApi } from '../api/client';
+import type { 
+    ScanCreateRequest, 
+    ReportFormat, 
+    ReportType, 
+    BatchScanCreateRequest, 
+    AssetUpdateRequest 
+} from '../types/api';
 
 // Query keys
 export const queryKeys = {
@@ -11,6 +17,10 @@ export const queryKeys = {
     health: () => ['health'] as const,
     profiles: () => ['scan', 'profiles'] as const,
     templates: () => ['scan', 'templates'] as const,
+    batchStatus: (batchId: string) => ['scan', 'batch', batchId] as const,
+    assets: (params?: Record<string, unknown>) => ['assets', 'list', params] as const,
+    assetStats: () => ['assets', 'stats'] as const,
+    assetDetail: (assetId: number) => ['assets', 'detail', assetId] as const,
 };
 
 // Scan results query — auto-polls every 3s while scan is running, stops when done
@@ -177,6 +187,109 @@ export function useDownloadReport() {
             document.body.removeChild(a);
             window.URL.revokeObjectURL(url);
             return { success: true };
+        },
+    });
+}
+
+// ==================== BATCH SCAN HOOKS ====================
+
+// Start a batch / CIDR scan
+export function useStartBatchScan() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (data: BatchScanCreateRequest) => batchScanApi.startBatchScan(data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: queryKeys.queueInfo() });
+            queryClient.invalidateQueries({ queryKey: ['scan', 'history'] });
+            queryClient.invalidateQueries({ queryKey: ['assets'] });
+        },
+    });
+}
+
+// Polling batch scan status
+export function useBatchStatus(batchId: string | null) {
+    return useQuery({
+        queryKey: queryKeys.batchStatus(batchId || ''),
+        queryFn: () => (batchId ? batchScanApi.getBatchStatus(batchId) : null),
+        enabled: !!batchId,
+        refetchInterval: (query) => {
+            const data = query.state.data;
+            if (!data) return 2500;
+            // Stop polling when no tasks are running or pending
+            const isDone = data.running === 0 && data.pending === 0;
+            return isDone ? false : 2500;
+        },
+    });
+}
+
+// ==================== ASSET INVENTORY HOOKS ====================
+
+// List assets with pagination and filters
+export function useAssets(params?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    asset_type?: string;
+    status?: string;
+    criticality?: string;
+    min_risk?: number;
+}) {
+    return useQuery({
+        queryKey: queryKeys.assets(params),
+        queryFn: () => assetApi.getAssets(params),
+    });
+}
+
+// Aggregated asset inventory metrics
+export function useAssetStats() {
+    return useQuery({
+        queryKey: queryKeys.assetStats(),
+        queryFn: () => assetApi.getAssetStats(),
+        refetchInterval: 15000,
+    });
+}
+
+// Single asset detail with discovered ports and vulnerabilities
+export function useAssetDetail(assetId: number | null) {
+    return useQuery({
+        queryKey: queryKeys.assetDetail(assetId || 0),
+        queryFn: () => (assetId ? assetApi.getAssetDetail(assetId) : null),
+        enabled: !!assetId,
+    });
+}
+
+// Update asset metadata (tags, notes, status, criticality)
+export function useUpdateAsset() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: ({ assetId, data }: { assetId: number; data: AssetUpdateRequest }) =>
+            assetApi.updateAsset(assetId, data),
+        onSuccess: (_data, variables) => {
+            queryClient.invalidateQueries({ queryKey: queryKeys.assetDetail(variables.assetId) });
+            queryClient.invalidateQueries({ queryKey: ['assets'] });
+        },
+    });
+}
+
+// Delete asset from inventory
+export function useDeleteAsset() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (assetId: number) => assetApi.deleteAsset(assetId),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['assets'] });
+        },
+    });
+}
+
+// Launch on-demand scan on asset
+export function useScanAsset() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (assetId: number) => assetApi.scanAsset(assetId),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: queryKeys.queueInfo() });
+            queryClient.invalidateQueries({ queryKey: ['scan', 'history'] });
         },
     });
 }
