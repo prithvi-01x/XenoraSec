@@ -1,6 +1,72 @@
-# CHANGELOG - v2.0 Production Refactor
+# CHANGELOG
 
-## 🎉 Major Architectural Changes
+## 🚀 v2.1.0 - Production Containerization, CI/CD, CIDR Scanning & Asset Inventory
+
+### 🐳 Option A: Turnkey Production Containerization & CI/CD Pipeline
+- **Production Backend Container (`Dockerfile`)**:
+  - Base image: `python:3.12-slim` with system security hardening.
+  - Bundles precompiled `nmap` and `nuclei v3.3.8` with updated community template catalog.
+  - Non-root user execution (`xenora:xenora` UID 10001) for unprivileged security operation.
+  - Built-in container health check probe querying `/health` endpoint.
+- **Production Frontend Container (`frontend/Dockerfile`)**:
+  - Multi-stage build: `node:20-alpine` builder with `npm run build`, outputting to lightweight `nginx:1.27-alpine` runtime.
+  - Gzip compression enabled for JS/CSS chunks, HTML, and JSON payloads.
+  - Clean client-side SPA routing rewrites with fallback (`try_files $uri $uri/ /index.html`).
+- **Nginx Reverse Proxy (`frontend/nginx.conf`)**:
+  - Seamless proxying of `/api/` and `/health` to backend on port 8000.
+  - WebSocket connection upgrade (`Upgrade $http_upgrade`, `Connection "Upgrade"`) supporting real-time terminal log streaming at `/api/scan/*/ws`.
+- **Multi-Container Orchestration (`docker-compose.yml`)**:
+  - Connects backend and frontend services via internal isolated network (`xenora-net`).
+  - Named persistent volume `scans_data:/data` dedicated to SQLite WAL and SHM files to preserve scan histories across container updates.
+  - Provided `docker-compose.override.yml.example` for local live-reload development mounts.
+- **GitHub Actions Continuous Integration (`.github/workflows/ci.yml`)**:
+  - Multi-version matrix testing for Python 3.11 and 3.12 running the full `pytest` suite.
+  - Frontend static linting with ESLint (`npm run lint`).
+  - TypeScript strict type checking with `tsc -b`.
+  - Vite production bundle verification (`npm run build`).
+  - Automated `docker compose config` validation.
+
+### 🌐 Option C: Multi-Target CIDR Subnet Auditing & Batch Execution
+- **CIDR Subnet Expansion & Prefix Governance**:
+  - Full support for IPv4 CIDR blocks from `/24` to `/32` (e.g. `192.168.1.0/28` -> 14 usable hosts, `/30` -> 2 hosts, `/24` -> 254 hosts).
+  - Defensive prefix guard enforcing `MAX_CIDR_PREFIX=24` (subnets wider than /24 are safely rejected to prevent accidental network flooding).
+- **Multi-Target List Ingestion**:
+  - Accepts raw comma-separated (`192.168.1.1, 192.168.1.2`), newline-delimited, or mixed target lists.
+  - Automatic whitespace trimming, newline de-duplication, and per-target SSRF / DNS rebinding validation.
+- **Asynchronous Batch Scanner Queue**:
+  - Dispatches batch scans via `POST /api/scan/batch` with immediate batch manifest return.
+  - Worker concurrency governor (`BATCH_CONCURRENCY=3`) preventing system starvation.
+  - Real-time batch telemetry polling endpoint (`GET /api/scan/batch/{batch_id}`) tracking completion counts and aggregate risk score.
+- **Frontend Batch UX Enhancements**:
+  - Single Target vs Multi-Target / CIDR Subnet mode switch in `ScanPanel.tsx`.
+  - Quick-fill CIDR helper chips (`/30`, `/29`, `/28`, `/24`) with automatic host calculation.
+  - Real-time reactive target counter and validation preview.
+  - Interactive `BatchProgressModal` showing live progress bar, per-scan status badges, and direct links.
+  - Subnet and `BATCH` badges displayed in scan history table (`HistoryPage.tsx`).
+
+### 🏢 Option C: Asset Inventory & Attack Surface Management (ASM)
+- **Persistent Relational Asset Catalog**:
+  - New database tables: `Asset`, `AssetPort`, and `AssetVulnerability` with foreign key relationships and cascade deletion.
+  - Automatic database schema migration check on startup.
+- **Autonomous Scan Finding Ingestion & Idempotent Delta Upsert**:
+  - Completed scans automatically index discovered open ports and Nuclei vulnerabilities into the Asset Inventory (`upsert_asset_from_scan`).
+  - Subsequent scans on the same target update metadata, service versions, and `last_seen` timestamps without creating duplicate assets.
+- **Full REST API Suite (`/api/assets`)**:
+  - `GET /api/assets`: Paginated inventory with search, status, and criticality filtering.
+  - `GET /api/assets/stats`: Enterprise KPI metrics (total assets, active nodes, critical risk targets, exposed services, total CVEs).
+  - `GET /api/assets/{id}`: Detailed inspection of individual assets with all open ports and vulnerabilities.
+  - `PATCH /api/assets/{id}`: Update asset criticality rating, operational status, custom tags, and notes.
+  - `DELETE /api/assets/{id}`: Permanently delete an asset with cascade removal of associated ports and findings.
+  - `POST /api/assets/{id}/scan`: Instant re-scan trigger against an asset.
+- **Modern Asset Command Center UI (`AssetInventoryPage.tsx`)**:
+  - Real-time KPI summary cards with cybernetic glow effects.
+  - Tabular asset list with sorting, filtering, and risk score visualization.
+  - Expandable drawer for deep dive into discovered services and CVE references.
+  - Fully integrated into sidebar navigation and responsive mobile drawer.
+
+---
+
+## 🏛️ v2.0 - Production Refactor
 
 ### 1. **Unified Status System** ✅
 - **Before**: Status mismatch between DB ("running", "completed", "failed") and services ("success", "error", "timeout")
