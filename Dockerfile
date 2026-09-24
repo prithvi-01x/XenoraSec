@@ -27,11 +27,16 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create volume mount directory for SQLite WAL database
-RUN mkdir -p /data
+# Create unprivileged system user and runtime directories
+RUN groupadd -r xenora && useradd -r -g xenora -u 10001 -m -d /home/xenora xenora \
+    && mkdir -p /data \
+    && chown -R xenora:xenora /data /app /home/xenora
 
 # Copy application source
 COPY . .
+RUN chown -R xenora:xenora /app
+
+USER xenora
 
 EXPOSE 8000
 
