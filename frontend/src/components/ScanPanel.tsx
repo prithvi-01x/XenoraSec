@@ -8,15 +8,18 @@ import {
     Globe, 
     Server, 
     Link2, 
+    Network,
+    Layers,
     ChevronDown, 
     ChevronUp, 
     Tag, 
     Sliders 
 } from 'lucide-react';
-import { useStartScan, useScanTemplates } from '../hooks/useApi';
-import { validateTarget } from '../utils/helpers';
+import { useStartScan, useStartBatchScan, useScanTemplates } from '../hooks/useApi';
+import { validateTarget, parseBatchTargetsPreview } from '../utils/helpers';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ScanProfileSelector } from './ScanProfileSelector';
+import { BatchProgressModal } from './BatchProgressModal';
 import type { ScanProfile, ScanTiming, ScanOptions } from '../types/api';
 
 const DEFAULT_POPULAR_TAGS = [
@@ -32,11 +35,21 @@ const DEFAULT_POPULAR_TAGS = [
     { id: 'ssl', label: 'SSL / TLS Security', category: 'service' },
 ];
 
+const CIDR_PRESETS = [
+    { label: '/30 (2 hosts)', snippet: '192.168.1.0/30' },
+    { label: '/29 (6 hosts)', snippet: '192.168.1.0/29' },
+    { label: '/28 (14 hosts)', snippet: '192.168.1.0/28' },
+    { label: '/24 (254 hosts)', snippet: '192.168.1.0/24' },
+];
+
 export function ScanPanel() {
+    const [scanMode, setScanMode] = useState<'single' | 'batch'>('single');
     const [target, setTarget] = useState('');
+    const [rawBatchTargets, setRawBatchTargets] = useState('');
     const [profile, setProfile] = useState<ScanProfile>('quick');
     const [showAdvanced, setShowAdvanced] = useState(false);
     const [submitError, setSubmitError] = useState('');
+    const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
 
     // Custom options state
     const [customPorts, setCustomPorts] = useState('');
@@ -47,16 +60,22 @@ export function ScanPanel() {
 
     const navigate = useNavigate();
     const startScan = useStartScan();
+    const startBatchScan = useStartBatchScan();
     const { data: templatesData } = useScanTemplates();
 
     const availableTags = templatesData?.tags?.length
         ? templatesData.tags.map((t) => ({ id: t.id, label: t.name, category: t.category }))
         : DEFAULT_POPULAR_TAGS;
 
-    const validation = useMemo(() => {
+    const singleValidation = useMemo(() => {
         if (!target.trim()) return null;
         return validateTarget(target);
     }, [target]);
+
+    const batchPreview = useMemo(() => {
+        if (scanMode !== 'batch') return null;
+        return parseBatchTargetsPreview(rawBatchTargets);
+    }, [scanMode, rawBatchTargets]);
 
     const toggleTag = (tagId: string) => {
         setSelectedTags((prev) =>
@@ -64,16 +83,18 @@ export function ScanPanel() {
         );
     };
 
+    const handleInsertCidrPreset = (snippet: string) => {
+        if (scanMode === 'single') {
+            setTarget(snippet);
+        } else {
+            setRawBatchTargets((prev) => (prev.trim() ? `${prev.trim()}\n${snippet}` : snippet));
+        }
+        setSubmitError('');
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setSubmitError('');
-
-        // Validate target
-        const res = validateTarget(target);
-        if (!res.valid) {
-            setSubmitError(res.error || 'Invalid target');
-            return;
-        }
 
         const options: ScanOptions = {};
         if (customPorts.trim()) {
@@ -88,13 +109,71 @@ export function ScanPanel() {
             options.tags = selectedTags;
         }
 
+        const scanOptions = profile === 'custom' || showAdvanced ? options : undefined;
+
+        if (scanMode === 'batch') {
+            if (!rawBatchTargets.trim()) {
+                setSubmitError('Please enter at least one target or CIDR subnet');
+                return;
+            }
+            if (batchPreview?.invalidTokens && batchPreview.invalidTokens.length > 0) {
+                setSubmitError(`Invalid target(s): ${batchPreview.invalidTokens.slice(0, 3).join(', ')}`);
+                return;
+            }
+
+            try {
+                const res = await startBatchScan.mutateAsync({
+                    raw_targets: rawBatchTargets.trim(),
+                    scan_profile: profile,
+                    options: scanOptions,
+                    batch_name: `Batch Scan (${batchPreview?.totalEstimatedHosts || 0} hosts)`,
+                });
+                setActiveBatchId(res.batch_id);
+            } catch (err: unknown) {
+                if (axios.isAxiosError(err)) {
+                    const detail = (err.response?.data as { detail?: string } | undefined)?.detail;
+                    setSubmitError(detail || 'Failed to start batch scan');
+                } else {
+                    setSubmitError('Failed to start batch scan');
+                }
+            }
+            return;
+        }
+
+        // Single target validation
+        const res = validateTarget(target);
+        if (!res.valid) {
+            setSubmitError(res.error || 'Invalid target');
+            return;
+        }
+
+        // If single target was actually a CIDR block, automatically launch it via batch API
+        if (res.targetType === 'cidr') {
+            try {
+                const batchRes = await startBatchScan.mutateAsync({
+                    raw_targets: target.trim(),
+                    scan_profile: profile,
+                    options: scanOptions,
+                    batch_name: `CIDR Subnet (${target.trim()})`,
+                });
+                setActiveBatchId(batchRes.batch_id);
+            } catch (err: unknown) {
+                if (axios.isAxiosError(err)) {
+                    const detail = (err.response?.data as { detail?: string } | undefined)?.detail;
+                    setSubmitError(detail || 'Failed to start CIDR scan');
+                } else {
+                    setSubmitError('Failed to start CIDR scan');
+                }
+            }
+            return;
+        }
+
         try {
             const result = await startScan.mutateAsync({
                 target: target.trim(),
                 scan_profile: profile,
-                options: profile === 'custom' || showAdvanced ? options : undefined,
+                options: scanOptions,
             });
-            // Navigate to scan results page
             navigate(`/scan/${result.scan_id}`);
         } catch (err: unknown) {
             if (axios.isAxiosError(err)) {
@@ -113,23 +192,25 @@ export function ScanPanel() {
     };
 
     const getTargetBadge = () => {
-        if (!validation) return null;
-        if (validation.valid) {
+        if (!singleValidation) return null;
+        if (singleValidation.valid) {
             const icons = {
                 ipv4: <Server className="w-3.5 h-3.5" />,
                 ipv6: <Server className="w-3.5 h-3.5" />,
                 domain: <Globe className="w-3.5 h-3.5" />,
                 url: <Link2 className="w-3.5 h-3.5" />,
-                localhost: <Server className="w-3.5 h-3.5" />
+                localhost: <Server className="w-3.5 h-3.5" />,
+                cidr: <Network className="w-3.5 h-3.5" />,
             };
             const labels = {
                 ipv4: 'IPv4 Address',
                 ipv6: 'IPv6 Address',
                 domain: 'Domain Host',
                 url: 'Web URL',
-                localhost: 'Localhost'
+                localhost: 'Localhost',
+                cidr: `CIDR Subnet (~${singleValidation.hostCount || 0} hosts)`,
             };
-            const type = validation.targetType || 'domain';
+            const type = singleValidation.targetType || 'domain';
             return (
                 <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                     <CheckCircle2 className="w-3 h-3 text-emerald-400" />
@@ -146,13 +227,51 @@ export function ScanPanel() {
         );
     };
 
+    const isPending = startScan.isPending || startBatchScan.isPending;
+
     return (
         <div className="card space-y-6">
-            <div>
-                <h2 className="text-2xl font-bold text-white mb-1">Launch Security Audit</h2>
-                <p className="text-sm text-gray-400">
-                    Execute automated multi-phase network reconnaissance, vulnerability validation, and AI risk synthesis.
-                </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                    <h2 className="text-2xl font-bold text-white mb-1">Launch Security Audit</h2>
+                    <p className="text-sm text-gray-400">
+                        Multi-target network reconnaissance, CIDR subnet expansion, and AI risk synthesis.
+                    </p>
+                </div>
+
+                {/* Single vs Multi-Target / CIDR Toggle */}
+                <div className="inline-flex p-1 bg-surface-light border border-gray-700 rounded-lg shrink-0 self-start sm:self-auto">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setScanMode('single');
+                            setSubmitError('');
+                        }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                            scanMode === 'single'
+                                ? 'bg-primary text-white shadow'
+                                : 'text-gray-400 hover:text-white'
+                        }`}
+                    >
+                        <Server className="w-3.5 h-3.5" />
+                        Single Host
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setScanMode('batch');
+                            setSubmitError('');
+                        }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                            scanMode === 'batch'
+                                ? 'bg-primary text-white shadow'
+                                : 'text-gray-400 hover:text-white'
+                        }`}
+                    >
+                        <Layers className="w-3.5 h-3.5" />
+                        Multi-Target / CIDR
+                    </button>
+                </div>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
@@ -160,52 +279,75 @@ export function ScanPanel() {
                 <div>
                     <div className="flex items-center justify-between mb-2">
                         <label htmlFor="target" className="block text-xs font-semibold uppercase tracking-wider text-gray-400">
-                            Target Specification
+                            {scanMode === 'single' ? 'Target Specification' : 'Multi-Target & Subnet Specification'}
                         </label>
-                        {getTargetBadge()}
+                        {scanMode === 'single' && getTargetBadge()}
+                        {scanMode === 'batch' && batchPreview && (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/30">
+                                <Network className="w-3.5 h-3.5" />
+                                <span>~{batchPreview.totalEstimatedHosts} hosts ({batchPreview.rawCount} targets)</span>
+                            </span>
+                        )}
                     </div>
-                    <input
-                        id="target"
-                        type="text"
-                        value={target}
-                        onChange={(e) => {
-                            setTarget(e.target.value);
-                            if (submitError) setSubmitError('');
-                        }}
-                        placeholder="e.g., scanme.nmap.org, 192.168.1.1, https://target.app"
-                        className={`input ${
-                            validation && !validation.valid && target.trim().length > 3
-                                ? 'border-amber-500/50 focus:border-amber-500'
-                                : ''
-                        }`}
-                        disabled={startScan.isPending}
-                    />
+
+                    {scanMode === 'single' ? (
+                        <input
+                            id="target"
+                            type="text"
+                            value={target}
+                            onChange={(e) => {
+                                setTarget(e.target.value);
+                                if (submitError) setSubmitError('');
+                            }}
+                            placeholder="e.g., scanme.nmap.org, 192.168.1.0/28, https://target.app"
+                            className={`input ${
+                                singleValidation && !singleValidation.valid && target.trim().length > 3
+                                    ? 'border-amber-500/50 focus:border-amber-500'
+                                    : ''
+                            }`}
+                            disabled={isPending}
+                        />
+                    ) : (
+                        <textarea
+                            id="batch-targets"
+                            rows={4}
+                            value={rawBatchTargets}
+                            onChange={(e) => {
+                                setRawBatchTargets(e.target.value);
+                                if (submitError) setSubmitError('');
+                            }}
+                            placeholder="Enter multiple IP addresses, hostnames, or CIDR blocks separated by newlines or commas.&#10;e.g.:&#10;192.168.1.0/28&#10;api.example.com&#10;10.0.0.5"
+                            className="input font-mono text-xs leading-relaxed"
+                            disabled={isPending}
+                        />
+                    )}
 
                     {/* Inline real-time validation hint */}
-                    {validation && !validation.valid && target.trim().length > 3 && (
+                    {scanMode === 'single' && singleValidation && !singleValidation.valid && target.trim().length > 3 && (
                         <p className="mt-1.5 text-xs text-amber-400 flex items-center gap-1">
                             <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                            <span>{validation.error}</span>
+                            <span>{singleValidation.error}</span>
                         </p>
                     )}
 
-                    {/* Target format guide & quick presets */}
+                    {scanMode === 'batch' && batchPreview?.invalidTokens && batchPreview.invalidTokens.length > 0 && (
+                        <p className="mt-1.5 text-xs text-amber-400 flex items-center gap-1">
+                            <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                            <span>Unrecognized target format: {batchPreview.invalidTokens.slice(0, 3).join(', ')}</span>
+                        </p>
+                    )}
+
+                    {/* Target format guide & CIDR helper chips */}
                     <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs text-gray-400">
-                        <span>Quick presets:</span>
-                        {[
-                            'scanme.nmap.org',
-                            'https://example.com'
-                        ].map((preset) => (
+                        <span className="font-medium text-gray-300">CIDR Helpers:</span>
+                        {CIDR_PRESETS.map((preset) => (
                             <button
-                                key={preset}
+                                key={preset.snippet}
                                 type="button"
-                                onClick={() => {
-                                    setTarget(preset);
-                                    setSubmitError('');
-                                }}
-                                className="px-2 py-0.5 rounded bg-surface border border-gray-700 hover:border-primary text-gray-300 hover:text-primary transition-colors"
+                                onClick={() => handleInsertCidrPreset(preset.snippet)}
+                                className="px-2 py-0.5 rounded bg-surface border border-gray-700 hover:border-primary text-gray-300 hover:text-primary transition-colors font-mono text-[11px]"
                             >
-                                {preset}
+                                + {preset.label}
                             </button>
                         ))}
                     </div>
@@ -220,7 +362,7 @@ export function ScanPanel() {
                             setShowAdvanced(true);
                         }
                     }}
-                    disabled={startScan.isPending}
+                    disabled={isPending}
                 />
 
                 {/* Advanced Options Accordion */}
@@ -363,22 +505,37 @@ export function ScanPanel() {
 
                 <button
                     type="submit"
-                    disabled={startScan.isPending || !target.trim() || (validation !== null && !validation.valid)}
+                    disabled={
+                        isPending ||
+                        (scanMode === 'single'
+                            ? !target.trim() || (singleValidation !== null && !singleValidation.valid)
+                            : !rawBatchTargets.trim())
+                    }
                     className="btn btn-primary w-full flex items-center justify-center gap-2 py-3 text-base font-semibold disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-cyber-blue/20"
                 >
-                    {startScan.isPending ? (
+                    {isPending ? (
                         <>
                             <LoadingSpinner size="sm" />
-                            Initializing Scanner Engine...
+                            Dispatching Target Queue...
                         </>
                     ) : (
                         <>
                             <Play className="w-5 h-5 fill-current" />
-                            Start Security Assessment ({profile.toUpperCase()})
+                            {scanMode === 'single'
+                                ? `Start Security Assessment (${profile.toUpperCase()})`
+                                : `Launch Batch Subnet Scan (${profile.toUpperCase()})`}
                         </>
                     )}
                 </button>
             </form>
+
+            {/* Batch Progress Modal */}
+            {activeBatchId && (
+                <BatchProgressModal
+                    batchId={activeBatchId}
+                    onClose={() => setActiveBatchId(null)}
+                />
+            )}
         </div>
     );
 }
