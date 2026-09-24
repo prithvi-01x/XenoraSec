@@ -26,7 +26,8 @@ from app.db.crud import (
     mark_scan_failed,
     get_scan_history,
     delete_scan,
-    cleanup_old_scans
+    cleanup_old_scans,
+    upsert_asset_from_scan
 )
 from app.services.scanner_service import run_full_scan, get_scan_queue_info
 from app.services.profile_service import get_available_profiles, get_available_tags, resolve_scan_options
@@ -750,6 +751,16 @@ async def _run_and_store_scan(
                     duration=result.get("duration"),
                     status=final_status
                 )
+                # Auto-index discoveries and vulnerabilities into Asset Inventory
+                try:
+                    await upsert_asset_from_scan(
+                        db=db,
+                        target=target,
+                        scan_result=result,
+                        risk_score=result.get("risk_score", 0.0)
+                    )
+                except Exception as asset_err:
+                    logger.error(f"Failed to auto-index findings for scan {scan_id} into Asset Inventory: {asset_err}")
             else:
                 # Mark as failed/timeout
                 error_msg = result.get("error", "Scan failed")
