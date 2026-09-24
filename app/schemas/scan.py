@@ -101,6 +101,7 @@ class ScanCreateResponse(BaseModel):
     target: str
     status: ScanStatus
     scan_profile: Optional[str] = "quick"
+    batch_id: Optional[str] = None
     message: str = "Scan started successfully"
 
     model_config = ConfigDict(
@@ -178,6 +179,7 @@ class ScanResultResponse(BaseModel):
     status: ScanStatus
     scan_profile: Optional[str] = "quick"
     scan_options: Optional[Dict[str, Any]] = None
+    batch_id: Optional[str] = None
     risk_score: float
     duration: Optional[float] = None
     summary: ScanSummary
@@ -233,6 +235,7 @@ class ScanHistoryItem(BaseModel):
     target: str
     status: ScanStatus
     scan_profile: Optional[str] = "quick"
+    batch_id: Optional[str] = None
     risk_score: float
     created_at: datetime
     updated_at: datetime
@@ -298,3 +301,57 @@ class ErrorResponse(BaseModel):
             }
         }
     )
+
+
+# ==================== BATCH SCAN SCHEMAS ====================
+
+class BatchScanCreateRequest(BaseModel):
+    """Request to launch a batch scan across multiple targets or CIDR subnets"""
+    targets: Optional[List[str]] = Field(
+        default=None,
+        description="List of target hostnames, IPs, or CIDR ranges"
+    )
+    raw_targets: Optional[str] = Field(
+        default=None,
+        description="Raw newline/comma-delimited string of targets or CIDR subnets"
+    )
+    scan_profile: Optional[ScanProfile] = ScanProfile.QUICK
+    options: Optional[ScanOptions] = None
+    batch_name: Optional[str] = Field(
+        default=None,
+        description="Human-friendly label for this batch scan"
+    )
+
+
+class BatchScanItem(BaseModel):
+    """Status summary for an individual target in a batch"""
+    scan_id: str
+    target: str
+    status: ScanStatus
+    risk_score: float = 0.0
+    duration: Optional[float] = None
+    error: Optional[str] = None
+
+
+class BatchScanCreateResponse(BaseModel):
+    """Response returned immediately upon queuing a batch scan"""
+    batch_id: str
+    batch_name: Optional[str] = None
+    total_targets: int
+    created_scans: List[BatchScanItem]
+    skipped_targets: List[Dict[str, str]] = Field(default_factory=list)
+    message: str = "Batch scan queued successfully"
+
+
+class BatchScanStatusResponse(BaseModel):
+    """Progress and aggregated results for a running or completed batch scan"""
+    batch_id: str
+    batch_name: Optional[str] = None
+    total: int
+    completed: int
+    running: int
+    failed: int
+    pending: int
+    scans: List[BatchScanItem]
+    overall_risk_score: float = 0.0
+    created_at: Optional[datetime] = None
