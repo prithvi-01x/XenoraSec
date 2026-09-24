@@ -586,54 +586,68 @@ XenoraSec includes a turnkey `render.yaml` blueprint:
    - **`xenorasec-frontend`**: Static Site serving compiled React SPA with client-side SPA routing rewrites.
 4. Add any custom environment variables (such as `GROQ_API_KEY`) via the Render Dashboard.
 
-### 2. Multi-Container Production via Docker Compose
+### 2. Turnkey Multi-Container Production (Docker Compose & Nginx)
 
-For on-premise or cloud VPS deployments (AWS EC2, DigitalOcean, Hetzner), use Docker Compose:
+For on-premise, cloud VPS (AWS, GCP, DigitalOcean, Hetzner), or air-gapped deployments, XenoraSec provides a production-grade multi-container orchestration via `docker-compose.yml`:
 
-```yaml
-version: '3.8'
-
-services:
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: xenorasec
-      POSTGRES_PASSWORD: secure_db_password
-      POSTGRES_DB: xenorasec
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U xenorasec"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  backend:
-    build:
-      context: .
-      dockerfile: Dockerfile.render
-    restart: unless-stopped
-    ports:
-      - "8000:10000"
-    environment:
-      DATABASE_URL: "postgresql+asyncpg://xenorasec:secure_db_password@postgres:5432/xenorasec"
-      ALLOW_LOCALHOST_SCANNING: "false"
-      ALLOW_PRIVATE_IP_SCANNING: "false"
-      RATE_LIMIT_ENABLED: "true"
-      TRUST_PROXY_HEADERS: "true"
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-volumes:
-  pgdata:
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      Client Browser / Ingress                   │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │ HTTP :80
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     Frontend Nginx Proxy                        │
+│  - Serves compiled React 18 SPA static assets                   │
+│  - Gzip compression for JS/CSS bundles                          │
+│  - SPA fallback: try_files $uri $uri/ /index.html               │
+│  - Reverse Proxy: /api/* -> backend:8000                        │
+│  - WebSocket Upgrade: /api/scan/*/ws -> backend:8000            │
+│  - Health Probe: /health -> backend:8000/health                 │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │ internal network
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     Backend FastAPI Service                     │
+│  - Python 3.12 runtime with Nmap & Nuclei v3.3.8 pre-installed  │
+│  - Non-root unprivileged execution                              │
+│  - SQLite WAL persistence on mounted volume                     │
+│  - Autonomous background scan workers & concurrency slots       │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│               Persistent Storage (scans_data Volume)            │
+│  - Mount: /data/scans.db (WAL + SHM index files)                │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-Launch with:
+#### Quick Start with Docker Compose
 ```bash
+# 1. Copy sample environment
+cp .env.example .env
+
+# 2. Build and launch services in background
 docker compose up -d --build
+
+# 3. Check container health status
+docker compose ps
+
+# 4. View real-time container logs
+docker compose logs -f
 ```
+The application will be accessible at **`http://localhost`** (or your server's IP address on port 80).
+
+#### Architecture Highlights:
+- **Zero-Configuration Reverse Proxy**: Nginx automatically handles API routing, eliminating CORS issues in production environments.
+- **WebSocket Streaming Support**: Full connection upgrade headers (`Upgrade $http_upgrade`, `Connection "Upgrade"`) allow seamless terminal streaming.
+- **Persistent SQLite WAL Volume**: Database data is stored in the Docker volume `scans_data` mounted at `/data/scans.db`, ensuring scan records survive container restarts and updates without corruption.
+- **Production Health Checks**: Both containers feature automated Docker health checks (`/health` endpoint probe) to ensure zero-downtime restarts.
+- **Development Overrides**: Copy `docker-compose.override.yml.example` to `docker-compose.override.yml` to mount local directories for live reloading during development:
+  ```bash
+  cp docker-compose.override.yml.example docker-compose.override.yml
+  docker compose up
+  ```
 
 ---
 
