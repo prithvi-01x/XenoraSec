@@ -160,3 +160,123 @@ export interface DashboardStats {
     risk_history: Array<{ date: string; risk_score: number }>;
     recent_scans: ScanHistoryItem[];
 }
+
+// ==================== ASSET INVENTORY ====================
+
+export type AssetType = 'ip' | 'domain' | 'url' | 'cidr_host';
+export type AssetCriticality = 'low' | 'medium' | 'high' | 'critical';
+export type AssetStatus = 'active' | 'inactive' | 'scanned' | 'decommissioned';
+
+export interface AssetPort {
+    id?: number;
+    port: number;
+    protocol: string;
+    service?: string;
+    product?: string;
+    version?: string;
+    last_seen?: string;
+}
+
+export interface AssetVulnerability {
+    id?: number;
+    template_id?: string;
+    name: string;
+    severity: Severity;
+    cve?: string;
+    cvss?: number;
+    matched_at?: string;
+    status: string;
+    first_seen?: string;
+    last_seen?: string;
+}
+
+export interface AssetItem {
+    id: number;
+    ip_address: string;
+    hostname?: string;
+    asset_type: AssetType;
+    status: AssetStatus;
+    criticality: AssetCriticality;
+    risk_score: number;
+    open_ports_count: number;
+    vulnerabilities_count: number;
+    critical_count: number;
+    high_count: number;
+    medium_count: number;
+    low_count: number;
+    tags?: string[];
+    notes?: string;
+    last_scanned_at?: string;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface AssetDetail extends AssetItem {
+    ports: AssetPort[];
+    vulnerabilities: AssetVulnerability[];
+}
+
+export interface AssetListResponse {
+    items: AssetItem[];
+    total: number;
+    limit: number;
+    offset: number;
+}
+
+export interface AssetStats {
+    total_assets: number;
+    active_assets: number;
+    critical_risk_assets: number;
+    total_open_ports: number;
+    total_vulnerabilities: number;
+    asset_type_distribution: Record<string, number>;
+    criticality_distribution: Record<string, number>;
+}
+
+export interface AssetUpdateRequest {
+    criticality?: AssetCriticality;
+    status?: AssetStatus;
+    tags?: string[];
+    notes?: string;
+}
+
+// ==================== BATCH SCANS ====================
+
+export interface BatchScanCreateRequest {
+    targets?: string[];
+    raw_targets?: string;
+    scan_profile?: ScanProfile;
+    options?: ScanOptions;
+    batch_name?: string;
+}
+
+export interface BatchScanItem {
+    scan_id: string;
+    target: string;
+    status: ScanStatus;
+    risk_score: number;
+    duration?: number;
+    error?: string;
+}
+
+export interface BatchScanCreateResponse {
+    batch_id: string;
+    batch_name?: string;
+    total_targets: number;
+    created_scans: BatchScanItem[];
+    skipped_targets: Array<{ target: string; reason: string }>;
+    message: string;
+}
+
+export interface BatchScanStatusResponse {
+    batch_id: string;
+    batch_name?: string;
+    total: number;
+    completed: number;
+    running: number;
+    failed: number;
+    pending: number;
+    scans: BatchScanItem[];
+    overall_risk_score: number;
+    created_at?: string;
+}
