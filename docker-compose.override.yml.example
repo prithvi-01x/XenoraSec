@@ -1,0 +1,20 @@
+# Example Docker Compose override for local development
+# Copy this file to docker-compose.override.yml to enable:
+# cp docker-compose.override.yml.example docker-compose.override.yml
+
+services:
+  backend:
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+      - ALLOW_LOCALHOST_SCANNING=true
+      - ALLOW_PRIVATE_IP_SCANNING=true
+    volumes:
+      - ./app:/app/app
+      - ./scans.db:/data/scans.db
+
+  frontend:
+    ports:
+      - "3000:80"
