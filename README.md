@@ -354,14 +354,22 @@ XenoraSec provides a clean, fully documented OpenAPI (Swagger) interface accessi
 
 | Method | Endpoint | Description | Status Codes |
 | :--- | :--- | :--- | :--- |
-| `POST` | `/api/scan/` | Initiate a new security scan | `200`, `400`, `429`, `503` |
+| `POST` | `/api/scan/` | Initiate an individual security scan | `200`, `400`, `429`, `503` |
+| `POST` | `/api/scan/batch` | Queue batch scan across multi-targets or CIDR subnets | `200`, `400`, `429`, `503` |
+| `GET` | `/api/scan/batch/{batch_id}` | Poll batch execution telemetry & aggregated score | `200`, `404` |
 | `GET` | `/api/scan/results/{scan_id}` | Fetch full scan results & findings | `200`, `400`, `404` |
-| `GET` | `/api/scan/history` | Paginated historical scan records | `200`, `400` |
+| `GET` | `/api/scan/history` | Paginated historical scan records (supports batch filter) | `200`, `400` |
 | `POST` | `/api/scan/{scan_id}/retry` | Retry a failed, timeout, or partial scan | `200`, `400`, `404`, `503` |
 | `POST` | `/api/scan/{scan_id}/cancel` | Abort a running background scan | `200`, `400`, `404` |
 | `DELETE` | `/api/scan/{scan_id}` | Permanently delete a scan result | `200`, `400`, `404` |
 | `GET` | `/api/scan/queue` | Query active scan concurrency slots | `200` |
 | `POST` | `/api/scan/cleanup` | Purge scans older than N days (`secret` req) | `200`, `403`, `503` |
+| `GET` | `/api/assets` | Paginated Asset Inventory with keyword & criticality filters | `200` |
+| `GET` | `/api/assets/stats` | Perimeter ASM KPI metrics & severity distribution | `200` |
+| `GET` | `/api/assets/{id}` | Inspect asset with open service ports & active CVEs | `200`, `404` |
+| `PATCH` | `/api/assets/{id}` | Update asset criticality, operational status, and notes | `200`, `400`, `404` |
+| `DELETE` | `/api/assets/{id}` | Delete asset and cascade remove linked ports/vulns | `200`, `404` |
+| `POST` | `/api/assets/{id}/scan` | Trigger automated re-scan of an existing asset | `200`, `404`, `503` |
 | `GET` | `/health` | Liveness & database connection health | `200`, `503` |
 
 ### API Usage Examples
@@ -450,6 +458,43 @@ curl "http://localhost:8000/api/scan/profiles"
 curl "http://localhost:8000/api/scan/templates"
 ```
 
+#### 7. Multi-Target & CIDR Batch Operations
+Launch mass security audits across subnets or host lists, and monitor aggregate telemetry:
+```bash
+# Launch a batch scan for a CIDR block and extra hosts
+curl -X POST "http://localhost:8000/api/scan/batch" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "raw_targets": "192.168.1.0/29\napi.example.com",
+       "scan_profile": "quick",
+       "batch_name": "Perimeter Audit Q3"
+     }'
+
+# Query batch progress and overall composite risk
+curl -s "http://localhost:8000/api/scan/batch/{batch_id}"
+```
+
+#### 8. Asset Inventory Management API
+Inspect, filter, update criticality, and trigger automated re-scans across persistent assets:
+```bash
+# Query paginated inventory with filters
+curl -s "http://localhost:8000/api/assets?criticality=high&status=active&limit=10"
+
+# Fetch aggregated attack surface statistics
+curl -s "http://localhost:8000/api/assets/stats"
+
+# Inspect detailed asset ports and active CVE vulnerabilities
+curl -s "http://localhost:8000/api/assets/{asset_id}"
+
+# Update asset criticality rating and operational notes
+curl -X PATCH "http://localhost:8000/api/assets/{asset_id}" \
+     -H "Content-Type: application/json" \
+     -d '{"criticality": "critical", "notes": "Primary authentication gateway"}'
+
+# Trigger an immediate re-scan of an asset
+curl -X POST "http://localhost:8000/api/assets/{asset_id}/scan"
+```
+
 ---
 
 ## ⚙️ Environment Configuration
@@ -475,6 +520,9 @@ All settings in XenoraSec can be configured via environment variables or specifi
 | **`RATE_LIMIT_PER_HOUR`**| `integer` | `100` | Requests allowed per hour per IP |
 | **`TRUST_PROXY_HEADERS`**| `boolean` | `false` | Enable when behind reverse proxies |
 | **`ALLOWED_ORIGINS`** | `string` | `http://localhost:5173,...` | Allowed CORS origins (comma separated)|
+| **`MAX_CIDR_PREFIX`** | `integer` | `24` | Maximum allowable CIDR subnet mask (prevents wide subnet scans) |
+| **`MAX_BATCH_TARGETS`** | `integer` | `256` | Maximum total target count accepted per batch submission |
+| **`BATCH_CONCURRENCY`** | `integer` | `3` | Worker concurrency slots allocated for batch scans |
 | **`GROQ_API_KEY`** | `string` | `null` | Groq Cloud API key for Llama 3.3 LLM |
 | **`GROQ_MODEL`** | `string` | `"llama-3.3-70b-versatile"` | Target Groq model identifier |
 | **`CLEANUP_SECRET`** | `string` | `null` | Required secret for `/api/scan/cleanup`|
@@ -497,10 +545,14 @@ All settings in XenoraSec can be configured via environment variables or specifi
 
 ## ✨ Key Features
 
-- **🛡️ Security Scanning**: Nmap & Nuclei integration with AI risk scoring
-- **🖥️ Modern Dashboard**: Real-time progress, interactive charts, dark mode
-- **⚙️ Reliability**: Async-first design, rate limiting, health checks
-- **🔒 Security**: Input validation, CORS protection and also private IP blocking
+- **🛡️ Asynchronous Dual-Engine Scanning**: Concurrent network recon (Nmap) and template vulnerability assessment (Nuclei v3.3.8) with streaming stdout parsing.
+- **🌐 Multi-Target & CIDR Subnet Auditing**: First-class support for IPv4 CIDR blocks (`/24` to `/32`) and multi-host lists with asynchronous worker queuing.
+- **🏢 Attack Surface & Asset Inventory**: Autonomous indexing of discovered hosts, exposed services, and CVEs into a persistent relational asset catalog.
+- **🧠 Hybrid AI Risk Scoring**: Mathematical Michaelis-Menten bounded scoring (0.0 - 10.0) with zero-latency Groq Cloud LLM contextual analysis.
+- **🐳 Turnkey Production Containerization**: Production Docker Compose orchestrating FastAPI backend, SQLite WAL persistence, and Nginx reverse proxy.
+- **🔄 GitHub Actions CI/CD Matrix**: Multi-version Python (3.11, 3.12) automated testing, TypeScript strict type checks, and ESLint quality gates.
+- **🖥️ Responsive Cyber-Defense Dashboard**: Real-time progress streaming, interactive Recharts telemetry, dark mode, and mobile drawer navigation.
+- **🔒 Zero-Trust Perimeter Defense**: Native SSRF prevention, DNS rebinding mitigation, sliding-window rate limiting, and trusted proxy verification.
 
 ---
 
@@ -835,13 +887,17 @@ xenorasec/
 
 ## 🗺️ Product Roadmap
 
-- [x] **Asynchronous Dual-Engine Orchestration** (Nmap + Nuclei)
+- [x] **Asynchronous Dual-Engine Orchestration** (Nmap + Nuclei v3.3.8)
 - [x] **Deterministic Michaelis-Menten Risk Scoring Model**
 - [x] **Optional Groq Cloud LLM Integration** (Llama 3.3 70B)
 - [x] **Zero-Trust SSRF & DNS Rebinding Protection**
 - [x] **SQLite WAL Mode & High-Concurrency Hardening**
 - [x] **Mobile Responsive Navigation Drawer & Real-Time Input Badges**
-- [ ] **Automated PDF / Executive Security Report Export**
+- [x] **Automated PDF / HTML / Markdown / JSON Security Report Generation**
+- [x] **Production Containerization (Docker Compose & Nginx Reverse Proxy)**
+- [x] **GitHub Actions CI/CD Multi-Version Matrix Testing**
+- [x] **Multi-Target CIDR Subnet Scanning & Batch Execution**
+- [x] **Asset Inventory & Attack Surface Management (ASM)**
 - [ ] **Webhook Notifications** (Slack, Discord, Microsoft Teams, Generic Webhook)
 - [ ] **Recurring Scheduled Scans** (Cron-like interval scanning)
 - [ ] **Multi-Node Distributed Worker Queue** (Redis + Celery support)
