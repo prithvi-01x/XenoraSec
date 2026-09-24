@@ -1,0 +1,17 @@
+.git
+.github
+.pytest_cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.env
+scans.db
+scans.db-wal
+scans.db-shm
+venv/
+frontend/node_modules/
+frontend/dist/
+Screenshots/
+docs/
+tests/
