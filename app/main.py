@@ -9,7 +9,7 @@ import time
 
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import update as sa_update
-from app.routes import health, scan, ui
+from app.routes import health, scan, ui, asset
 from app.db.database import init_db, close_db, AsyncSessionLocal
 from app.db.models import ScanResult
 from app.schemas.scan import ScanStatus
@@ -186,6 +186,7 @@ async def general_exception_handler(request: Request, exc: Exception):
 app.include_router(ui.router)
 app.include_router(health.router)
 app.include_router(scan.router)
+app.include_router(asset.router)
 
 
 # ==================== STARTUP MESSAGE ====================
