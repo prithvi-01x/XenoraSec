@@ -68,10 +68,9 @@ async def run_full_scan(
             level=StreamLogLevel.INFO
         )
     
-    start_time = time.time()
-    
     # Acquire semaphore for concurrency control
     async with _scan_semaphore:
+        start_time = time.time()
         try:
             # Global scan timeout wrapper
             scan_result = await asyncio.wait_for(
