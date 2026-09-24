@@ -488,7 +488,63 @@ For production environments, the recommended architecture is:
 ```
 
 ### Deployment Checklist
-1. **Database**: Use PostgreSQL with `asyncpg` driver
-2. **Server**: Run behind Nginx with SSL/TLS
+1. **Database**: Use PostgreSQL with `asyncpg` driver (or containerized SQLite with WAL mode on persistent volumes)
+2. **Server**: Run behind Nginx with reverse proxy and WebSocket upgrade handling
 3. **Workers**: Run multiple Uvicorn workers (`workers = 2 * CPU + 1`)
 4. **Security**: Set `DEBUG=False`, `ALLOW_PRIVATE_IP_SCANNING=False`, `RATE_LIMIT_ENABLED=True`
+
+---
+
+## 🌐 Multi-Target CIDR Subnet Architecture (Option C)
+
+XenoraSec natively supports CIDR notation (e.g. `192.168.1.0/28`) and multi-host delimited lists for batch security audits.
+
+```
+User Input (CIDR / Multi-Host)
+             │
+             ▼
+[Target Validator & Safety Gate] ─── Subnet prefix check (>= /24 cap, max 256 hosts)
+             │
+             ▼
+[CIDR Host Expansion] ────────────── Strips network/broadcast, resolves valid IP list
+             │
+             ▼
+[Batch Queue Orchestrator] ───────── Generates batch_id, creates child scans
+             │
+             ▼
+[Concurrency Semaphore Pool] ─────── Dispatches workers under MAX_CONCURRENT_SCANS limit
+             │
+             ▼
+[Continuous Telemetry & DB] ──────── Streams SSE/WS logs per scan, aggregates batch stats
+```
+
+### Key Engineering Decisions:
+- **Prefix Guardrails**: Limits subnets to `/24` or smaller (`MAX_CIDR_PREFIX=24`, max 256 IPs) to prevent unintentional network saturation.
+- **Deduplication**: Preserves order while filtering duplicate host occurrences across overlapping CIDRs.
+- **Traceability**: All child scans carry `batch_id` foreign keys indexed alongside `created_at` for high-throughput batch status polling.
+
+---
+
+## 🗄️ Asset Inventory Data Architecture (Option C)
+
+The Asset Inventory system decouples point-in-time scan runs from the persistent attack surface registry. Discoveries from completed scans automatically flow into relational asset models.
+
+```
+       [Scan Execution Completes]
+                   │
+                   ▼
+       [Asset Ingestion Service]
+                   │
+    ┌──────────────┴──────────────┐
+    ▼                             ▼
+[Asset Upsert]           [Port & Vulnerability Sync]
+  - Deduplicates IP/Host   - Upserts open ports (AssetPort)
+  - Updates risk score     - Re-evaluates open findings (AssetVulnerability)
+  - Recalculates metrics   - Calculates dynamic criticality tier
+```
+
+### Relational Schema:
+- **`assets`**: Root entity storing IP, hostname, asset type (`ip`, `domain`, `url`, `cidr_host`), status, criticality tier, calculated risk score, open ports count, and vulnerability breakdown.
+- **`asset_ports`**: Discovered network services linked via `asset_id` (port, protocol, service, product, version, last seen).
+- **`asset_vulnerabilities`**: Tracked findings linked via `asset_id` (template_id, name, severity, CVE, CVSS, status, first seen, last seen).
+
