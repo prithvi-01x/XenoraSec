@@ -36,3 +36,11 @@ Allows operators to export full technical or executive summaries across four dis
 
 ### BatchProgressModal
 Provides real-time telemetry over multi-target CIDR sweeps and parallel scans, detailing worker progress, completion percentages, and direct access links.
+
+## 5. View Routing & State Management
+
+- **Dashboard (`/`)**: Displays real-time aggregate KPI metrics (total scans, unique hosts, critical/high vulns, open ports) and interactive severity distribution charts powered by Recharts.
+- **Scan Dossier (`/scan/:id`)**: Multi-tab interface featuring Executive Overview, Discovered Ports, Vulnerability Findings accordion with CVSS scoring, Live Terminal console stream, and Raw JSON inspector.
+- **Asset Inventory (`/assets`)**: Organization-wide host management, severity breakdown filters, interactive search, and deep-dive asset drawer modals.
+- **Audit Ledger (`/history`)**: Paginated historical log with status filters, duration tracking, and tactical record purging.
+- **Settings & Telemetry (`/settings`)**: Engine configuration inspection, database driver status, worker concurrency metrics, and environmental security policy gates.
