@@ -22,10 +22,10 @@ export function BatchProgressModal({ batchId, onClose }: BatchProgressModalProps
 
     if (isLoading && !batch) {
         return (
-            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                <div className="bg-surface border border-gray-700 rounded-xl p-6 text-center max-w-sm w-full">
-                    <LoadingSpinner size="lg" className="mx-auto mb-3" />
-                    <p className="text-sm text-gray-300">Loading batch scan telemetry...</p>
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <div className="bg-surface border border-surface-border rounded-lg p-6 text-center max-w-sm w-full">
+                    <LoadingSpinner size="lg" className="mx-auto mb-3 text-blue-500" />
+                    <p className="text-xs font-mono text-slate-300">Retrieving batch telemetry...</p>
                 </div>
             </div>
         );
@@ -39,66 +39,66 @@ export function BatchProgressModal({ batchId, onClose }: BatchProgressModalProps
     const isFinished = running === 0 && (batch?.pending || 0) === 0;
 
     return (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-surface border border-gray-700 rounded-xl shadow-2xl max-w-2xl w-full flex flex-col max-h-[90vh] overflow-hidden">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-surface border border-surface-border rounded-lg shadow-2xl max-w-2xl w-full flex flex-col max-h-[85vh] overflow-hidden">
                 {/* Header */}
-                <div className="p-4 sm:p-5 border-b border-gray-700 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-primary/20 text-primary">
-                            <Layers className="w-5 h-5" />
+                <div className="px-4 py-3 border-b border-surface-border flex items-center justify-between bg-[#070b12]">
+                    <div className="flex items-center gap-2.5">
+                        <div className="p-1.5 rounded bg-blue-950/80 text-blue-400 border border-blue-800">
+                            <Layers className="w-4 h-4" />
                         </div>
                         <div>
-                            <h3 className="font-bold text-white text-base sm:text-lg">
+                            <h3 className="font-bold text-white text-xs font-mono uppercase tracking-wider">
                                 {batch?.batch_name || 'Subnet Batch Execution'}
                             </h3>
-                            <p className="text-xs text-gray-400 font-mono">ID: {batchId.slice(0, 18)}...</p>
+                            <p className="text-[10px] text-slate-400 font-mono">ID: {batchId}</p>
                         </div>
                     </div>
                     <button
                         onClick={onClose}
-                        className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-surface-light"
+                        className="text-slate-400 hover:text-white p-1 rounded hover:bg-surface-light"
                     >
-                        <X className="w-5 h-5" />
+                        <X className="w-4 h-4" />
                     </button>
                 </div>
 
                 {/* Progress Stats Bar */}
-                <div className="p-4 sm:p-5 border-b border-gray-700 bg-background/50 space-y-3">
-                    <div className="flex items-center justify-between text-xs">
-                        <span className="text-gray-300 font-medium flex items-center gap-2">
-                            {!isFinished && <RefreshCw className="w-3.5 h-3.5 animate-spin text-primary" />}
-                            {isFinished ? 'Batch Scan Completed' : 'Scanning Targets in Concurrency Queue...'}
+                <div className="p-4 border-b border-surface-border bg-surface space-y-3">
+                    <div className="flex items-center justify-between text-xs font-mono">
+                        <span className="text-slate-300 flex items-center gap-2">
+                            {!isFinished && <RefreshCw className="w-3 h-3 animate-spin text-blue-400" />}
+                            {isFinished ? 'Execution Complete' : 'Executing Concurrent Scans...'}
                         </span>
-                        <span className="font-mono text-primary font-bold">{percent}%</span>
+                        <span className="text-blue-400 font-bold">{percent}%</span>
                     </div>
 
-                    <div className="w-full bg-gray-700 rounded-full h-2 overflow-hidden">
+                    <div className="w-full bg-[#070b12] rounded-full h-1.5 overflow-hidden border border-surface-border">
                         <div
-                            className="bg-primary h-full transition-all duration-500 rounded-full"
+                            className="bg-blue-500 h-full transition-all duration-300 rounded-full"
                             style={{ width: `${percent}%` }}
                         />
                     </div>
 
                     {/* Stat Badges */}
-                    <div className="grid grid-cols-4 gap-2 pt-1 text-center">
-                        <div className="bg-surface p-2 rounded-lg border border-gray-700/60">
-                            <div className="text-xs text-gray-400">Total</div>
+                    <div className="grid grid-cols-4 gap-2 pt-1 text-center font-mono">
+                        <div className="bg-[#070b12] p-2 rounded border border-surface-border">
+                            <div className="text-[10px] text-slate-400">Total</div>
                             <div className="text-sm font-bold text-white">{total}</div>
                         </div>
-                        <div className="bg-surface p-2 rounded-lg border border-gray-700/60">
-                            <div className="text-xs text-emerald-400 flex items-center justify-center gap-1">
+                        <div className="bg-[#070b12] p-2 rounded border border-surface-border">
+                            <div className="text-[10px] text-emerald-400 flex items-center justify-center gap-1">
                                 <CheckCircle2 className="w-3 h-3" /> Done
                             </div>
                             <div className="text-sm font-bold text-white">{completed}</div>
                         </div>
-                        <div className="bg-surface p-2 rounded-lg border border-gray-700/60">
-                            <div className="text-xs text-primary flex items-center justify-center gap-1">
+                        <div className="bg-[#070b12] p-2 rounded border border-surface-border">
+                            <div className="text-[10px] text-blue-400 flex items-center justify-center gap-1">
                                 <Clock className="w-3 h-3" /> Running
                             </div>
                             <div className="text-sm font-bold text-white">{running}</div>
                         </div>
-                        <div className="bg-surface p-2 rounded-lg border border-gray-700/60">
-                            <div className="text-xs text-danger flex items-center justify-center gap-1">
+                        <div className="bg-[#070b12] p-2 rounded border border-surface-border">
+                            <div className="text-[10px] text-rose-400 flex items-center justify-center gap-1">
                                 <AlertTriangle className="w-3 h-3" /> Failed
                             </div>
                             <div className="text-sm font-bold text-white">{failed}</div>
@@ -107,34 +107,34 @@ export function BatchProgressModal({ batchId, onClose }: BatchProgressModalProps
                 </div>
 
                 {/* Target Scan List */}
-                <div className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-2">
-                    <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">
-                        Target Queue ({batch?.scans?.length || 0})
-                    </h4>
+                <div className="p-3 overflow-y-auto flex-1 space-y-1.5 bg-[#05080e]">
+                    <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400 px-1 py-1">
+                        Targets ({batch?.scans?.length || 0})
+                    </div>
                     {batch?.scans?.map((scan) => (
                         <div
                             key={scan.scan_id}
-                            className="flex items-center justify-between p-3 rounded-lg bg-surface-light border border-gray-700/80 hover:border-gray-600 transition-colors text-xs"
+                            className="flex items-center justify-between p-2.5 rounded bg-surface border border-surface-border hover:border-slate-600 transition-colors text-xs font-mono"
                         >
                             <div className="flex items-center gap-2">
-                                <span className="font-mono text-white font-medium">{scan.target}</span>
+                                <span className="text-slate-100 font-semibold">{scan.target}</span>
                                 {scan.risk_score > 0 && (
-                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono">
+                                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-950 text-amber-300 border border-amber-800">
                                         Risk {scan.risk_score.toFixed(1)}
                                     </span>
                                 )}
                             </div>
 
                             <div className="flex items-center gap-3">
-                                <StatusBadge status={scan.status} className="text-[10px] py-0.5 px-2" />
+                                <StatusBadge status={scan.status} className="text-[9px] py-0.5 px-1.5" />
                                 <Link
                                     to={`/scan/${scan.scan_id}`}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="p-1 rounded text-gray-400 hover:text-primary transition-colors"
+                                    className="p-1 rounded text-slate-400 hover:text-blue-400 transition-colors"
                                     title="Open Scan Report"
                                 >
-                                    <ExternalLink className="w-4 h-4" />
+                                    <ExternalLink className="w-3.5 h-3.5" />
                                 </Link>
                             </div>
                         </div>
@@ -142,12 +142,12 @@ export function BatchProgressModal({ batchId, onClose }: BatchProgressModalProps
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 border-t border-gray-700 flex justify-end gap-2 bg-surface">
+                <div className="px-4 py-2.5 border-t border-surface-border flex justify-end bg-surface">
                     <button
                         onClick={onClose}
-                        className="btn btn-secondary text-xs px-4 py-2"
+                        className="btn btn-secondary text-xs"
                     >
-                        Dismiss Window
+                        Close Telemetry
                     </button>
                 </div>
             </div>
