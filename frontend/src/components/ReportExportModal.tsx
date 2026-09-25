@@ -49,34 +49,34 @@ export const ReportExportModal: React.FC<ReportExportModalProps> = ({
         {
             id: 'html',
             name: 'Interactive HTML Report',
-            desc: 'Modern dark/cyber standalone document with embedded CSS and print-to-PDF styles.',
-            icon: <Globe className="w-5 h-5 text-cyber-blue" />,
+            desc: 'Self-contained responsive dashboard with embedded telemetry and styling.',
+            icon: <Globe className="w-4 h-4 text-blue-400" />,
             badge: 'RECOMMENDED',
-            badgeColor: 'bg-cyber-blue/15 text-cyber-blue border-cyber-blue/30',
+            badgeColor: 'bg-blue-950/80 text-blue-400 border-blue-800',
         },
         {
             id: 'pdf',
             name: 'Publication PDF Document',
-            desc: 'Professional multi-page PDF formatted with ReportLab for board and stakeholder delivery.',
-            icon: <FileText className="w-5 h-5 text-red-400" />,
+            desc: 'Multi-page executive/technical PDF compiled with ReportLab.',
+            icon: <FileText className="w-4 h-4 text-red-400" />,
             badge: 'PRINT READY',
-            badgeColor: 'bg-red-500/15 text-red-400 border-red-500/30',
+            badgeColor: 'bg-red-950/80 text-red-400 border-red-800',
         },
         {
             id: 'markdown',
             name: 'Technical Markdown',
-            desc: 'Clean GitHub-flavored Markdown tables and advisories ready for Git repos and PRs.',
-            icon: <FileCode className="w-5 h-5 text-emerald-400" />,
-            badge: 'DOCUMENTATION',
-            badgeColor: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+            desc: 'GitHub-flavored tables and advisories for PRs and issues.',
+            icon: <FileCode className="w-4 h-4 text-emerald-400" />,
+            badge: 'DOCS',
+            badgeColor: 'bg-emerald-950/80 text-emerald-400 border-emerald-800',
         },
         {
             id: 'json',
             name: 'Raw Structured JSON',
-            desc: 'Complete vulnerability data, CVSS metrics, and service discovery for SIEM/automation ingestion.',
-            icon: <Database className="w-5 h-5 text-amber-400" />,
-            badge: 'MACHINE-READABLE',
-            badgeColor: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+            desc: 'Full vulnerability schema, CVSS metrics, and service discovery.',
+            icon: <Database className="w-4 h-4 text-amber-400" />,
+            badge: 'SIEM READY',
+            badgeColor: 'bg-amber-950/80 text-amber-400 border-amber-800',
         },
     ];
 
@@ -98,62 +98,64 @@ export const ReportExportModal: React.FC<ReportExportModalProps> = ({
     const previewUrl = scanApi.getReportUrl(scanId, selectedFormat, reportType);
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150">
-            <div className="relative w-full max-w-xl bg-cyber-dark border border-cyber-border rounded-2xl shadow-2xl overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <div className="relative w-full max-w-lg bg-surface border border-surface-border rounded-lg shadow-2xl overflow-hidden font-sans">
                 {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-cyber-border bg-cyber-light/20">
-                    <div className="flex items-center space-x-3">
-                        <div className="p-2 rounded-lg bg-cyber-blue/10 border border-cyber-blue/20">
-                            <ShieldAlert className="w-5 h-5 text-cyber-blue" />
+                <div className="flex items-center justify-between px-4 py-3 border-b border-surface-border bg-[#070b12]">
+                    <div className="flex items-center space-x-2.5">
+                        <div className="p-1.5 rounded bg-blue-950/80 border border-blue-800 text-blue-400">
+                            <ShieldAlert className="w-4 h-4" />
                         </div>
                         <div>
-                            <h3 className="font-bold text-white text-base">Generate Security Assessment Report</h3>
-                            <p className="text-xs text-gray-400 font-mono">Target: {target}</p>
+                            <h3 className="font-bold text-white text-xs font-mono uppercase tracking-wider">
+                                Export Assessment Dossier
+                            </h3>
+                            <p className="text-[10px] text-slate-400 font-mono">Target: {target}</p>
                         </div>
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-1.5 text-gray-400 hover:text-white rounded-lg hover:bg-cyber-light/40 transition-colors"
+                        className="p-1 text-slate-400 hover:text-white rounded hover:bg-surface-light transition-colors"
                     >
-                        <X className="w-5 h-5" />
+                        <X className="w-4 h-4" />
                     </button>
                 </div>
 
                 {/* Body */}
-                <div className="p-6 space-y-6">
-                    {/* Audience Selector */}
+                <div className="p-4 space-y-4">
+                    {/* Audience Depth */}
                     <div>
-                        <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">
-                            Report Audience &amp; Depth
+                        <label className="block text-[10px] font-mono uppercase font-semibold text-slate-400 mb-1.5">
+                            Report Depth &amp; Focus
                         </label>
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-2 gap-2">
                             <button
                                 type="button"
                                 onClick={() => setReportType('technical')}
-                                className={`p-3 rounded-xl border text-left transition-all ${
+                                className={`p-2.5 rounded border text-left transition-all ${
                                     reportType === 'technical'
-                                        ? 'bg-cyber-blue/15 border-cyber-blue text-white ring-1 ring-cyber-blue/30'
-                                        : 'bg-cyber-light/10 border-cyber-border text-gray-400 hover:text-gray-200'
+                                        ? 'bg-blue-600/10 border-blue-500 ring-1 ring-blue-500/30'
+                                        : 'bg-[#070b12] border-surface-border text-slate-400 hover:text-slate-200'
                                 }`}
                             >
-                                <span className="font-bold text-sm block mb-1">Technical Audit</span>
-                                <span className="text-xs text-gray-400 block leading-relaxed">
-                                    Full vulnerability proofs, CVE details, open port tables, and remediation notes.
+                                <span className="font-bold text-xs block text-white mb-0.5">Technical Audit</span>
+                                <span className="text-[10px] text-slate-400 block leading-normal">
+                                    Vulnerability proofs, CVE details, open ports, and remediation advisory.
                                 </span>
                             </button>
 
                             <button
                                 type="button"
                                 onClick={() => setReportType('executive')}
-                                className={`p-3 rounded-xl border text-left transition-all ${
+                                className={`p-2.5 rounded border text-left transition-all ${
                                     reportType === 'executive'
-                                        ? 'bg-cyber-blue/15 border-cyber-blue text-white ring-1 ring-cyber-blue/30'
-                                        : 'bg-cyber-light/10 border-cyber-border text-gray-400 hover:text-gray-200'
+                                        ? 'bg-blue-600/10 border-blue-500 ring-1 ring-blue-500/30'
+                                        : 'bg-[#070b12] border-surface-border text-slate-400 hover:text-slate-200'
                                 }`}
                             >
-                                <span className="font-bold text-sm block mb-1">Executive Summary</span>
-                                <span className="text-xs text-gray-400 block leading-relaxed">
-                                    Strategic risk scores, high-level posture, and top remediation priorities.
+                                <span className="font-bold text-xs block text-white mb-0.5">Executive Summary</span>
+                                <span className="text-[10px] text-slate-400 block leading-normal">
+                                    Strategic risk postures, CVSS distribution, and priority highlights.
                                 </span>
                             </button>
                         </div>
@@ -161,10 +163,10 @@ export const ReportExportModal: React.FC<ReportExportModalProps> = ({
 
                     {/* Format Selector */}
                     <div>
-                        <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">
-                            Export Format
+                        <label className="block text-[10px] font-mono uppercase font-semibold text-slate-400 mb-1.5">
+                            Format Output
                         </label>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             {formats.map((f) => {
                                 const isSelected = selectedFormat === f.id;
                                 return (
@@ -172,26 +174,26 @@ export const ReportExportModal: React.FC<ReportExportModalProps> = ({
                                         key={f.id}
                                         type="button"
                                         onClick={() => setSelectedFormat(f.id)}
-                                        className={`flex flex-col text-left p-3 rounded-xl border transition-all ${
+                                        className={`flex flex-col text-left p-2.5 rounded border transition-all ${
                                             isSelected
-                                                ? 'bg-cyber-blue/15 border-cyber-blue ring-1 ring-cyber-blue/30'
-                                                : 'bg-cyber-light/10 border-cyber-border hover:bg-cyber-light/20 hover:border-gray-600'
+                                                ? 'bg-blue-600/10 border-blue-500 ring-1 ring-blue-500/30'
+                                                : 'bg-[#070b12] border-surface-border hover:bg-surface-light hover:border-slate-600'
                                         }`}
                                     >
-                                        <div className="flex items-center justify-between mb-1.5">
-                                            <div className="flex items-center space-x-2">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <div className="flex items-center space-x-1.5">
                                                 {f.icon}
                                                 <span className="font-semibold text-xs text-white">
                                                     {f.name}
                                                 </span>
                                             </div>
                                             <span
-                                                className={`text-[9px] font-mono uppercase px-1.5 py-0.2 rounded border font-semibold ${f.badgeColor}`}
+                                                className={`text-[8px] font-mono uppercase px-1 py-0.2 rounded border font-semibold ${f.badgeColor}`}
                                             >
                                                 {f.badge}
                                             </span>
                                         </div>
-                                        <p className="text-[11px] text-gray-400 leading-normal">
+                                        <p className="text-[10px] text-slate-400 leading-normal">
                                             {f.desc}
                                         </p>
                                     </button>
@@ -202,22 +204,22 @@ export const ReportExportModal: React.FC<ReportExportModalProps> = ({
                 </div>
 
                 {/* Footer Controls */}
-                <div className="flex items-center justify-between px-6 py-4 bg-cyber-dark/80 border-t border-cyber-border">
+                <div className="flex items-center justify-between px-4 py-3 bg-[#070b12] border-t border-surface-border">
                     <a
                         href={previewUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center space-x-1.5 text-xs text-cyber-blue hover:underline font-mono"
+                        className="inline-flex items-center space-x-1 text-[11px] text-blue-400 hover:underline font-mono"
                     >
-                        <span>Open Raw Stream / URL</span>
-                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Open Direct Link</span>
+                        <ExternalLink className="w-3 h-3" />
                     </a>
 
-                    <div className="flex items-center space-x-3">
+                    <div className="flex items-center space-x-2">
                         <button
                             type="button"
                             onClick={onClose}
-                            className="px-4 py-2 text-xs font-semibold text-gray-400 hover:text-white rounded-lg hover:bg-cyber-light/30 transition-colors"
+                            className="btn btn-secondary text-xs"
                         >
                             Cancel
                         </button>
@@ -226,21 +228,21 @@ export const ReportExportModal: React.FC<ReportExportModalProps> = ({
                             type="button"
                             onClick={handleDownload}
                             disabled={downloadMutation.isPending}
-                            className="btn btn-primary flex items-center space-x-2 px-4 py-2 text-xs font-semibold rounded-lg shadow-lg shadow-cyber-blue/20 disabled:opacity-50"
+                            className="btn btn-primary text-xs"
                         >
                             {downloadMutation.isPending ? (
                                 <>
                                     <LoadingSpinner size="sm" />
-                                    <span>Compiling Report...</span>
+                                    <span>Compiling...</span>
                                 </>
                             ) : downloadSuccess ? (
                                 <>
-                                    <Check className="w-4 h-4 text-emerald-400" />
-                                    <span>Downloaded!</span>
+                                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                    <span>Downloaded</span>
                                 </>
                             ) : (
                                 <>
-                                    <Download className="w-4 h-4" />
+                                    <Download className="w-3.5 h-3.5" />
                                     <span>Download {selectedFormat.toUpperCase()}</span>
                                 </>
                             )}
