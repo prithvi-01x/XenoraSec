@@ -5,11 +5,17 @@ import { LoadingState } from '../components/LoadingSpinner';
 import { ErrorState } from '../components/ErrorState';
 import { StatusBadge } from '../components/StatusBadge';
 import { formatDate, formatDuration } from '../utils/helpers';
-import { Trash2, Eye, ChevronLeft, ChevronRight } from 'lucide-react';
+import { 
+    Trash2, 
+    ChevronLeft, 
+    ChevronRight, 
+    Search, 
+    ExternalLink,
+    History
+} from 'lucide-react';
 
 const ITEMS_PER_PAGE = 10;
 
-// Simple debounce hook — waits for user to stop typing before firing
 function useDebounce<T>(value: T, delayMs: number): T {
     const [debounced, setDebounced] = useState(value);
     useEffect(() => {
@@ -25,8 +31,7 @@ export function HistoryPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
-    // Debounce search — only fires query 400ms after user stops typing
-    const debouncedSearch = useDebounce(searchTerm, 400);
+    const debouncedSearch = useDebounce(searchTerm, 350);
 
     const { data, isLoading, error, refetch } = useScanHistory({
         limit: ITEMS_PER_PAGE,
@@ -47,29 +52,40 @@ export function HistoryPage() {
         }
     };
 
-    if (isLoading) return <LoadingState message="Loading scan history..." />;
-    if (error) return <ErrorState message="Failed to load scan history" onRetry={refetch} />;
+    if (isLoading) return <LoadingState message="Querying scan execution ledger..." />;
+    if (error) return <ErrorState message="Failed to load scan history records" onRetry={refetch} />;
     if (!data) return null;
 
     const totalPages = Math.ceil(data.total / ITEMS_PER_PAGE);
 
     return (
-        <div className="space-y-6">
-            <div>
-                <h1 className="text-3xl font-bold mb-2">Scan History</h1>
-                <p className="text-gray-400">View and manage all scan records</p>
+        <div className="space-y-5">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-surface-border pb-4">
+                <div>
+                    <h1 className="text-xl font-bold tracking-tight text-white font-mono uppercase flex items-center gap-2">
+                        <History className="w-5 h-5 text-blue-400" />
+                        Audit Ledger &amp; Scan Archive
+                    </h1>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                        Comprehensive ledger of network assessments, status logs, and historical risk scores.
+                    </p>
+                </div>
+                <div className="text-xs font-mono text-slate-400">
+                    Total Records: <span className="text-white font-bold">{data.total}</span>
+                </div>
             </div>
 
-            {/* Filters */}
-            <div className="card">
-                <div className="flex gap-4">
+            {/* Filters Bar */}
+            <div className="card p-3 bg-surface border-surface-border">
+                <div className="flex flex-col sm:flex-row gap-2.5">
                     <select
                         value={statusFilter}
                         onChange={(e) => {
                             setStatusFilter(e.target.value);
                             setPage(0);
                         }}
-                        className="input w-48"
+                        className="input sm:w-44 text-xs"
                     >
                         <option value="">All Statuses</option>
                         <option value="running">Running</option>
@@ -79,105 +95,124 @@ export function HistoryPage() {
                         <option value="partial">Partial</option>
                     </select>
 
-                    <input
-                        type="text"
-                        value={searchTerm}
-                        onChange={(e) => {
-                            setSearchTerm(e.target.value);
-                            setPage(0);
-                        }}
-                        placeholder="Search by target..."
-                        className="input flex-1"
-                    />
+                    <div className="relative flex-1">
+                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                        <input
+                            type="text"
+                            value={searchTerm}
+                            onChange={(e) => {
+                                setSearchTerm(e.target.value);
+                                setPage(0);
+                            }}
+                            placeholder="Filter by target host or IP address..."
+                            className="input pl-8 text-xs"
+                        />
+                    </div>
                 </div>
             </div>
 
             {/* Table */}
-            <div className="card">
+            <div className="card p-0 overflow-hidden">
                 {data.items.length === 0 ? (
-                    <p className="text-center text-gray-400 py-12">No scans found</p>
+                    <div className="p-12 text-center text-slate-500">
+                        <History className="w-8 h-8 mx-auto mb-2 opacity-30 text-blue-400" />
+                        <p className="text-xs font-mono">No scan records matching current search parameters.</p>
+                    </div>
                 ) : (
                     <>
                         <div className="overflow-x-auto">
-                            <table className="w-full">
-                                <thead>
-                                    <tr className="border-b border-gray-700">
-                                        <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Target</th>
-                                        <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Status</th>
-                                        <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Risk Score</th>
-                                        <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Duration</th>
-                                        <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Created</th>
-                                        <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Actions</th>
+                            <table className="w-full text-left text-xs font-mono">
+                                <thead className="bg-[#070b12] text-slate-400 text-[10px] uppercase border-b border-surface-border">
+                                    <tr>
+                                        <th className="py-2.5 px-4 font-semibold">Target / Host</th>
+                                        <th className="py-2.5 px-4 font-semibold">Status</th>
+                                        <th className="py-2.5 px-4 font-semibold">Risk Posture</th>
+                                        <th className="py-2.5 px-4 font-semibold">Duration</th>
+                                        <th className="py-2.5 px-4 font-semibold">Recorded Date</th>
+                                        <th className="py-2.5 px-4 font-semibold text-right">Actions</th>
                                     </tr>
                                 </thead>
-                                <tbody>
+                                <tbody className="divide-y divide-surface-border/60">
                                     {data.items.map((scan) => (
-                                        <tr key={scan.scan_id} className="border-b border-gray-700/50 hover:bg-surface-light">
-                                            <td className="py-3 px-4">
-                                                <div>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="font-medium text-white">{scan.target}</span>
-                                                        <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-cyber-blue/10 text-cyber-blue border border-cyber-blue/20 font-semibold">
-                                                            {scan.scan_profile || 'quick'}
+                                        <tr key={scan.scan_id} className="hover:bg-surface-light/40 transition-colors">
+                                            <td className="py-2.5 px-4">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <Link 
+                                                        to={`/scan/${scan.scan_id}`}
+                                                        className="font-bold text-white hover:text-blue-400 transition-colors"
+                                                    >
+                                                        {scan.target}
+                                                    </Link>
+                                                    <span className="text-[9px] font-mono uppercase px-1.5 py-0.2 rounded bg-blue-950/80 text-blue-400 border border-blue-800 font-semibold">
+                                                        {scan.scan_profile || 'quick'}
+                                                    </span>
+                                                    {scan.batch_id && (
+                                                        <span
+                                                            className="text-[9px] font-mono uppercase px-1.5 py-0.2 rounded bg-purple-950 text-purple-400 border border-purple-800 font-semibold"
+                                                            title={`Batch ID: ${scan.batch_id}`}
+                                                        >
+                                                            BATCH
                                                         </span>
-                                                        {scan.batch_id && (
-                                                            <span
-                                                                className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/30 font-semibold"
-                                                                title={`Part of batch: ${scan.batch_id}`}
-                                                            >
-                                                                BATCH
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <div className="text-xs text-gray-400 font-mono mt-0.5">
-                                                        {scan.scan_id.substring(0, 8)}...
-                                                    </div>
+                                                    )}
+                                                </div>
+                                                <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                                                    {scan.scan_id.substring(0, 8)}...
                                                 </div>
                                             </td>
-                                            <td className="py-3 px-4">
-                                                <StatusBadge status={scan.status} />
+                                            <td className="py-2.5 px-4">
+                                                <StatusBadge status={scan.status} className="text-[9px] py-0.5 px-1.5" />
                                             </td>
-                                            <td className="py-3 px-4">
-                                                <span className="font-bold text-lg">{scan.risk_score.toFixed(1)}</span>
+                                            <td className="py-2.5 px-4">
+                                                <span className={`font-bold ${
+                                                    scan.risk_score >= 7.0 
+                                                        ? 'text-red-400' 
+                                                        : scan.risk_score >= 4.0 
+                                                        ? 'text-amber-400' 
+                                                        : 'text-slate-300'
+                                                }`}>
+                                                    {scan.risk_score.toFixed(1)} / 10
+                                                </span>
                                             </td>
-                                            <td className="py-3 px-4 text-gray-400">
+                                            <td className="py-2.5 px-4 text-slate-400">
                                                 {formatDuration(scan.duration)}
                                             </td>
-                                            <td className="py-3 px-4 text-sm text-gray-400">
+                                            <td className="py-2.5 px-4 text-slate-400 text-[11px] font-sans">
                                                 {formatDate(scan.created_at)}
                                             </td>
-                                            <td className="py-3 px-4">
-                                                <div className="flex items-center gap-2">
+                                            <td className="py-2.5 px-4 text-right">
+                                                <div className="flex items-center justify-end gap-1.5">
                                                     <Link
                                                         to={`/scan/${scan.scan_id}`}
-                                                        className="btn btn-secondary btn-sm flex items-center gap-1"
-                                                        title="View Details"
+                                                        className="btn btn-secondary btn-sm"
+                                                        title="Inspect Scan Dossier"
                                                     >
-                                                        <Eye className="w-4 h-4" />
+                                                        <span>Inspect</span>
+                                                        <ExternalLink className="w-3 h-3" />
                                                     </Link>
+
                                                     {deleteConfirmId === scan.scan_id ? (
-                                                        <>
+                                                        <div className="flex items-center gap-1">
                                                             <button
                                                                 onClick={() => handleDelete(scan.scan_id)}
                                                                 disabled={deleteScan.isPending}
                                                                 className="btn btn-danger btn-sm"
                                                             >
-                                                                Confirm
+                                                                Yes
                                                             </button>
                                                             <button
                                                                 onClick={() => setDeleteConfirmId(null)}
                                                                 className="btn btn-secondary btn-sm"
                                                             >
-                                                                Cancel
+                                                                No
                                                             </button>
-                                                        </>
+                                                        </div>
                                                     ) : (
                                                         <button
                                                             onClick={() => setDeleteConfirmId(scan.scan_id)}
-                                                            className="btn btn-danger btn-sm flex items-center gap-1"
-                                                            title="Delete"
+                                                            className="p-1.5 text-slate-500 hover:text-rose-400 rounded hover:bg-surface-light transition-colors"
+                                                            title="Delete Record"
                                                         >
-                                                            <Trash2 className="w-4 h-4" />
+                                                            <Trash2 className="w-3.5 h-3.5" />
                                                         </button>
                                                     )}
                                                 </div>
@@ -188,35 +223,35 @@ export function HistoryPage() {
                             </table>
                         </div>
 
-                        {/* Pagination */}
+                        {/* Pagination Bar */}
                         {totalPages > 1 && (
-                            <div className="flex items-center justify-between mt-6 pt-6 border-t border-gray-700">
-                                <div className="text-sm text-gray-400">
-                                    Showing {page * ITEMS_PER_PAGE + 1} to{' '}
-                                    {Math.min((page + 1) * ITEMS_PER_PAGE, data.total)} of {data.total} scans
+                            <div className="flex items-center justify-between p-3 border-t border-surface-border bg-[#070b12] text-xs font-mono">
+                                <div className="text-slate-400">
+                                    Displaying {page * ITEMS_PER_PAGE + 1} &ndash;{' '}
+                                    {Math.min((page + 1) * ITEMS_PER_PAGE, data.total)} of {data.total} records
                                 </div>
 
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1.5">
                                     <button
                                         onClick={() => setPage(page - 1)}
                                         disabled={page === 0}
-                                        className="btn btn-outline btn-sm flex items-center gap-1"
+                                        className="btn btn-outline btn-sm"
                                     >
-                                        <ChevronLeft className="w-4 h-4" />
-                                        Previous
+                                        <ChevronLeft className="w-3 h-3" />
+                                        Prev
                                     </button>
 
-                                    <span className="text-sm text-gray-400">
+                                    <span className="text-slate-400 px-2">
                                         Page {page + 1} of {totalPages}
                                     </span>
 
                                     <button
                                         onClick={() => setPage(page + 1)}
                                         disabled={page >= totalPages - 1}
-                                        className="btn btn-outline btn-sm flex items-center gap-1"
+                                        className="btn btn-outline btn-sm"
                                     >
                                         Next
-                                        <ChevronRight className="w-4 h-4" />
+                                        <ChevronRight className="w-3 h-3" />
                                     </button>
                                 </div>
                             </div>
