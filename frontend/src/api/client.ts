@@ -25,8 +25,7 @@ import type {
 // - Development: Uses VITE_API_BASE_URL or defaults to localhost
 // - Production: Uses empty string for same-origin requests (recommended)
 // Set VITE_API_BASE_URL in .env files to override
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ||
-    (import.meta.env.PROD ? '' : 'http://localhost:8000');
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
 const apiClient = axios.create({
     baseURL: API_BASE_URL,
