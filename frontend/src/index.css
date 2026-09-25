@@ -1,95 +1,124 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #0f172a;
-  --color-surface: #1e293b;
-  --color-surface-light: #334155;
-  --color-primary: #3b82f6;
-  --color-primary-dark: #2563eb;
-  --color-success: #22c55e;
+  --color-background: #090d16;
+  --color-surface: #0e1526;
+  --color-surface-light: #162035;
+  --color-surface-border: #1e2c47;
+  
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-light: #3b82f6;
+  --color-accent: #0ea5e9;
+
+  --color-success: #10b981;
   --color-danger: #ef4444;
   --color-warning: #f59e0b;
-  --color-info: #6b7280;
+  --color-info: #64748b;
+
   --color-critical: #dc2626;
   --color-high: #f97316;
   --color-medium: #eab308;
-  --color-low: #22c55e;
-  --font-family-sans: Inter, system-ui, sans-serif;
+  --color-low: #10b981;
+
+  --font-family-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-family-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+:root {
+  color-scheme: dark;
 }
 
 body {
   background-color: var(--color-background);
-  color: rgb(243 244 246);
+  color: #f1f5f9;
+  font-family: var(--font-family-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Custom Tactical Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #090d16;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e2c47;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #33476d;
+}
+
 @layer components {
   .btn {
-    @apply px-4 py-2 rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold tracking-wide transition-all focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-offset-background disabled:opacity-40 disabled:cursor-not-allowed select-none;
   }
 
   .btn-primary {
-    @apply bg-primary hover:bg-primary-dark text-white focus:ring-primary;
+    @apply bg-blue-600 hover:bg-blue-500 text-white shadow-sm border border-blue-500/50 focus:ring-blue-400 active:scale-[0.98];
   }
 
   .btn-danger {
-    @apply bg-danger hover:bg-red-600 text-white focus:ring-danger;
+    @apply bg-red-600 hover:bg-red-500 text-white shadow-sm border border-red-500/50 focus:ring-red-400 active:scale-[0.98];
   }
 
   .btn-secondary {
-    @apply bg-surface hover:bg-surface-light text-gray-100 focus:ring-gray-500;
+    @apply bg-surface-light hover:bg-[#1f2d4a] text-slate-200 border border-surface-border focus:ring-slate-400 active:scale-[0.98];
   }
 
   .btn-outline {
-    @apply border border-gray-600 hover:bg-surface text-gray-100 focus:ring-gray-500;
+    @apply bg-transparent hover:bg-surface-light text-slate-300 border border-slate-700 focus:ring-slate-400 active:scale-[0.98];
   }
 
   .btn-sm {
-    @apply px-3 py-1.5 text-sm;
+    @apply px-2.5 py-1 text-[11px];
   }
 
   .card {
-    @apply bg-surface rounded-lg border border-gray-700 p-6;
+    @apply bg-surface rounded-lg border border-surface-border p-4 shadow-sm;
   }
 
   .input {
-    @apply w-full px-4 py-2 bg-background border border-gray-600 rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent;
+    @apply w-full px-3 py-1.5 bg-[#070b12] border border-surface-border rounded text-xs text-slate-100 placeholder-slate-500 font-mono transition-colors focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500;
   }
 
   .badge {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-semibold uppercase tracking-wider select-none;
   }
 
   .badge-critical {
-    @apply bg-critical/20 text-critical border border-critical/30;
+    @apply bg-red-950/60 text-red-400 border border-red-800/80;
   }
 
   .badge-high {
-    @apply bg-high/20 text-high border border-high/30;
+    @apply bg-orange-950/60 text-orange-400 border border-orange-800/80;
   }
 
   .badge-medium {
-    @apply bg-medium/20 text-medium border border-medium/30;
+    @apply bg-amber-950/60 text-amber-300 border border-amber-800/80;
   }
 
   .badge-low {
-    @apply bg-low/20 text-low border border-low/30;
+    @apply bg-emerald-950/60 text-emerald-400 border border-emerald-800/80;
   }
 
   .badge-info {
-    @apply bg-info/20 text-info border border-info/30;
+    @apply bg-slate-900/80 text-slate-400 border border-slate-700/80;
   }
 
   .badge-success {
-    @apply bg-success/20 text-success border border-success/30;
+    @apply bg-emerald-950/60 text-emerald-400 border border-emerald-800/80;
   }
 
   .badge-running {
-    @apply bg-primary/20 text-primary border border-primary/30;
+    @apply bg-blue-950/60 text-blue-400 border border-blue-800/80;
   }
 
   .badge-failed {
-    @apply bg-danger/20 text-danger border border-danger/30;
+    @apply bg-rose-950/60 text-rose-400 border border-rose-800/80;
   }
 }
