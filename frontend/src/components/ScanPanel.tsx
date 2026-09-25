@@ -13,7 +13,9 @@ import {
     ChevronDown, 
     ChevronUp, 
     Tag, 
-    Sliders 
+    Sliders,
+    Info,
+    Terminal
 } from 'lucide-react';
 import { useStartScan, useStartBatchScan, useScanTemplates } from '../hooks/useApi';
 import { validateTarget, parseBatchTargetsPreview } from '../utils/helpers';
@@ -23,16 +25,16 @@ import { BatchProgressModal } from './BatchProgressModal';
 import type { ScanProfile, ScanTiming, ScanOptions } from '../types/api';
 
 const DEFAULT_POPULAR_TAGS = [
-    { id: 'cve', label: 'CVE Database', category: 'cve' },
-    { id: 'rce', label: 'Remote Code Exec', category: 'vulnerability' },
-    { id: 'misconfig', label: 'Misconfigurations', category: 'misconfig' },
-    { id: 'exposure', label: 'Information Exposure', category: 'exposure' },
-    { id: 'sqli', label: 'SQL Injection', category: 'vulnerability' },
-    { id: 'xss', label: 'Cross-Site Scripting', category: 'vulnerability' },
-    { id: 'default-login', label: 'Default Logins', category: 'misconfig' },
-    { id: 'auth-bypass', label: 'Auth Bypass', category: 'vulnerability' },
-    { id: 'tech', label: 'Tech Detect', category: 'service' },
-    { id: 'ssl', label: 'SSL / TLS Security', category: 'service' },
+    { id: 'cve', label: 'CVE Database' },
+    { id: 'rce', label: 'Remote Code Exec' },
+    { id: 'misconfig', label: 'Misconfigurations' },
+    { id: 'exposure', label: 'Information Exposure' },
+    { id: 'sqli', label: 'SQL Injection' },
+    { id: 'xss', label: 'Cross-Site Scripting' },
+    { id: 'default-login', label: 'Default Credentials' },
+    { id: 'auth-bypass', label: 'Auth Bypass' },
+    { id: 'tech', label: 'Tech Stack Fingerprinting' },
+    { id: 'ssl', label: 'SSL / TLS Security' },
 ];
 
 const CIDR_PRESETS = [
@@ -64,7 +66,7 @@ export function ScanPanel() {
     const { data: templatesData } = useScanTemplates();
 
     const availableTags = templatesData?.tags?.length
-        ? templatesData.tags.map((t) => ({ id: t.id, label: t.name, category: t.category }))
+        ? templatesData.tags.map((t) => ({ id: t.id, label: t.name }))
         : DEFAULT_POPULAR_TAGS;
 
     const singleValidation = useMemo(() => {
@@ -147,7 +149,7 @@ export function ScanPanel() {
             return;
         }
 
-        // If single target was actually a CIDR block, automatically launch it via batch API
+        // Auto-route CIDR target to batch scan
         if (res.targetType === 'cidr') {
             try {
                 const batchRes = await startBatchScan.mutateAsync({
@@ -178,9 +180,9 @@ export function ScanPanel() {
         } catch (err: unknown) {
             if (axios.isAxiosError(err)) {
                 if (err.response?.status === 429) {
-                    setSubmitError('Rate limit exceeded. Please wait before starting another scan.');
+                    setSubmitError('Rate limit exceeded. Please wait before launching another scan.');
                 } else if (err.response?.status === 503) {
-                    setSubmitError('Scan queue is full. Please try again later.');
+                    setSubmitError('Scan worker queue is currently full. Please try again shortly.');
                 } else {
                     const detail = (err.response?.data as { detail?: string } | undefined)?.detail;
                     setSubmitError(detail || 'Failed to start scan');
@@ -195,33 +197,33 @@ export function ScanPanel() {
         if (!singleValidation) return null;
         if (singleValidation.valid) {
             const icons = {
-                ipv4: <Server className="w-3.5 h-3.5" />,
-                ipv6: <Server className="w-3.5 h-3.5" />,
-                domain: <Globe className="w-3.5 h-3.5" />,
-                url: <Link2 className="w-3.5 h-3.5" />,
-                localhost: <Server className="w-3.5 h-3.5" />,
-                cidr: <Network className="w-3.5 h-3.5" />,
+                ipv4: <Server className="w-3 h-3" />,
+                ipv6: <Server className="w-3 h-3" />,
+                domain: <Globe className="w-3 h-3" />,
+                url: <Link2 className="w-3 h-3" />,
+                localhost: <Server className="w-3 h-3" />,
+                cidr: <Network className="w-3 h-3" />,
             };
             const labels = {
-                ipv4: 'IPv4 Address',
-                ipv6: 'IPv6 Address',
+                ipv4: 'IPv4 Host',
+                ipv6: 'IPv6 Host',
                 domain: 'Domain Host',
-                url: 'Web URL',
+                url: 'Web Service (URL)',
                 localhost: 'Localhost',
                 cidr: `CIDR Subnet (~${singleValidation.hostCount || 0} hosts)`,
             };
             const type = singleValidation.targetType || 'domain';
             return (
-                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-800/80">
+                    <CheckCircle2 className="w-3 h-3" />
                     {icons[type]}
                     <span>{labels[type]}</span>
                 </span>
             );
         }
         return (
-            <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                <AlertCircle className="w-3 h-3 text-amber-400" />
+            <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950/60 text-amber-400 border border-amber-800/80">
+                <AlertCircle className="w-3 h-3" />
                 <span>Format checking...</span>
             </span>
         );
@@ -230,27 +232,32 @@ export function ScanPanel() {
     const isPending = startScan.isPending || startBatchScan.isPending;
 
     return (
-        <div className="card space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="card space-y-5">
+            {/* Header with Scan Mode Toggle */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-surface-border pb-4">
                 <div>
-                    <h2 className="text-2xl font-bold text-white mb-1">Launch Security Audit</h2>
-                    <p className="text-sm text-gray-400">
-                        Multi-target network reconnaissance, CIDR subnet expansion, and AI risk synthesis.
+                    <div className="flex items-center gap-2">
+                        <Terminal className="w-4 h-4 text-blue-400" />
+                        <h2 className="text-sm font-bold text-white font-mono uppercase tracking-wider">
+                            Dispatch Security Assessment
+                        </h2>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                        Target enumeration, port scanning (Nmap), and template-based vulnerability matching (Nuclei).
                     </p>
                 </div>
 
-                {/* Single vs Multi-Target / CIDR Toggle */}
-                <div className="inline-flex p-1 bg-surface-light border border-gray-700 rounded-lg shrink-0 self-start sm:self-auto">
+                <div className="inline-flex p-0.5 bg-[#070b12] border border-surface-border rounded shrink-0 self-start sm:self-auto">
                     <button
                         type="button"
                         onClick={() => {
                             setScanMode('single');
                             setSubmitError('');
                         }}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-semibold transition-all ${
                             scanMode === 'single'
-                                ? 'bg-primary text-white shadow'
-                                : 'text-gray-400 hover:text-white'
+                                ? 'bg-surface-light text-white shadow-sm border border-surface-border'
+                                : 'text-slate-400 hover:text-white'
                         }`}
                     >
                         <Server className="w-3.5 h-3.5" />
@@ -262,90 +269,92 @@ export function ScanPanel() {
                             setScanMode('batch');
                             setSubmitError('');
                         }}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-semibold transition-all ${
                             scanMode === 'batch'
-                                ? 'bg-primary text-white shadow'
-                                : 'text-gray-400 hover:text-white'
+                                ? 'bg-surface-light text-white shadow-sm border border-surface-border'
+                                : 'text-slate-400 hover:text-white'
                         }`}
                     >
                         <Layers className="w-3.5 h-3.5" />
-                        Multi-Target / CIDR
+                        Batch / CIDR
                     </button>
                 </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-5">
                 {/* Target input */}
                 <div>
-                    <div className="flex items-center justify-between mb-2">
-                        <label htmlFor="target" className="block text-xs font-semibold uppercase tracking-wider text-gray-400">
-                            {scanMode === 'single' ? 'Target Specification' : 'Multi-Target & Subnet Specification'}
+                    <div className="flex items-center justify-between mb-1.5">
+                        <label htmlFor="target" className="block text-[11px] font-mono uppercase font-semibold text-slate-400">
+                            {scanMode === 'single' ? 'Target Host or Endpoint' : 'Batch Hostnames, IPs & Subnets'}
                         </label>
                         {scanMode === 'single' && getTargetBadge()}
                         {scanMode === 'batch' && batchPreview && (
-                            <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/30">
-                                <Network className="w-3.5 h-3.5" />
-                                <span>~{batchPreview.totalEstimatedHosts} hosts ({batchPreview.rawCount} targets)</span>
+                            <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded bg-blue-950/60 text-blue-400 border border-blue-800">
+                                <Network className="w-3 h-3" />
+                                <span>~{batchPreview.totalEstimatedHosts} hosts ({batchPreview.rawCount} lines)</span>
                             </span>
                         )}
                     </div>
 
                     {scanMode === 'single' ? (
-                        <input
-                            id="target"
-                            type="text"
-                            value={target}
-                            onChange={(e) => {
-                                setTarget(e.target.value);
-                                if (submitError) setSubmitError('');
-                            }}
-                            placeholder="e.g., scanme.nmap.org, 192.168.1.0/28, https://target.app"
-                            className={`input ${
-                                singleValidation && !singleValidation.valid && target.trim().length > 3
-                                    ? 'border-amber-500/50 focus:border-amber-500'
-                                    : ''
-                            }`}
-                            disabled={isPending}
-                        />
+                        <div className="relative">
+                            <input
+                                id="target"
+                                type="text"
+                                value={target}
+                                onChange={(e) => {
+                                    setTarget(e.target.value);
+                                    if (submitError) setSubmitError('');
+                                }}
+                                placeholder="e.g. scanme.nmap.org, 192.168.1.1, https://target.app"
+                                className={`input text-xs py-2 ${
+                                    singleValidation && !singleValidation.valid && target.trim().length > 3
+                                        ? 'border-amber-500/60 focus:border-amber-400'
+                                        : ''
+                                }`}
+                                disabled={isPending}
+                            />
+                        </div>
                     ) : (
                         <textarea
                             id="batch-targets"
-                            rows={4}
+                            rows={3}
                             value={rawBatchTargets}
                             onChange={(e) => {
                                 setRawBatchTargets(e.target.value);
                                 if (submitError) setSubmitError('');
                             }}
-                            placeholder="Enter multiple IP addresses, hostnames, or CIDR blocks separated by newlines or commas.&#10;e.g.:&#10;192.168.1.0/28&#10;api.example.com&#10;10.0.0.5"
-                            className="input font-mono text-xs leading-relaxed"
+                            placeholder="Enter IP addresses, hostnames, or subnets (one per line or comma-separated):&#10;192.168.1.0/28&#10;scanme.nmap.org&#10;10.0.0.1"
+                            className="input text-xs leading-relaxed"
                             disabled={isPending}
                         />
                     )}
 
-                    {/* Inline real-time validation hint */}
+                    {/* Validation error hint */}
                     {scanMode === 'single' && singleValidation && !singleValidation.valid && target.trim().length > 3 && (
-                        <p className="mt-1.5 text-xs text-amber-400 flex items-center gap-1">
+                        <p className="mt-1.5 text-[11px] font-mono text-amber-400 flex items-center gap-1">
                             <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
                             <span>{singleValidation.error}</span>
                         </p>
                     )}
 
                     {scanMode === 'batch' && batchPreview?.invalidTokens && batchPreview.invalidTokens.length > 0 && (
-                        <p className="mt-1.5 text-xs text-amber-400 flex items-center gap-1">
+                        <p className="mt-1.5 text-[11px] font-mono text-amber-400 flex items-center gap-1">
                             <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                            <span>Unrecognized target format: {batchPreview.invalidTokens.slice(0, 3).join(', ')}</span>
+                            <span>Unrecognized target notation: {batchPreview.invalidTokens.slice(0, 3).join(', ')}</span>
                         </p>
                     )}
 
-                    {/* Target format guide & CIDR helper chips */}
-                    <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs text-gray-400">
-                        <span className="font-medium text-gray-300">CIDR Helpers:</span>
+                    {/* CIDR Helper Chips */}
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+                        <span className="text-slate-400 font-mono text-[10px]">Quick Presets:</span>
                         {CIDR_PRESETS.map((preset) => (
                             <button
                                 key={preset.snippet}
                                 type="button"
                                 onClick={() => handleInsertCidrPreset(preset.snippet)}
-                                className="px-2 py-0.5 rounded bg-surface border border-gray-700 hover:border-primary text-gray-300 hover:text-primary transition-colors font-mono text-[11px]"
+                                className="px-2 py-0.5 rounded bg-[#070b12] border border-surface-border hover:border-blue-500 text-slate-300 hover:text-blue-400 transition-colors font-mono text-[10px]"
                             >
                                 + {preset.label}
                             </button>
@@ -353,7 +362,7 @@ export function ScanPanel() {
                     </div>
                 </div>
 
-                {/* Scan Profile Selector */}
+                {/* Profile Selector */}
                 <ScanProfileSelector
                     selectedProfile={profile}
                     onSelectProfile={(p) => {
@@ -366,106 +375,106 @@ export function ScanPanel() {
                 />
 
                 {/* Advanced Options Accordion */}
-                <div className="border border-cyber-border rounded-xl bg-cyber-light/10 overflow-hidden">
+                <div className="border border-surface-border rounded bg-[#070b12] overflow-hidden">
                     <button
                         type="button"
                         onClick={() => setShowAdvanced(!showAdvanced)}
-                        className="w-full flex items-center justify-between px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-300 hover:text-white hover:bg-cyber-light/20 transition-colors"
+                        className="w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-mono uppercase font-semibold text-slate-300 hover:text-white hover:bg-surface-light transition-colors"
                     >
-                        <div className="flex items-center space-x-2">
-                            <Sliders className="w-4 h-4 text-cyber-blue" />
-                            <span>Advanced Engine &amp; Template Options</span>
+                        <div className="flex items-center gap-2">
+                            <Sliders className="w-3.5 h-3.5 text-blue-400" />
+                            <span>Advanced Engine &amp; Nuclei Policy</span>
                             {profile === 'custom' && (
-                                <span className="text-[10px] bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded border border-purple-500/30">
-                                    Active for Custom Profile
+                                <span className="text-[9px] font-mono bg-purple-950 text-purple-300 px-1.5 py-0.2 rounded border border-purple-800">
+                                    Custom Active
                                 </span>
                             )}
                         </div>
-                        {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        {showAdvanced ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
                     </button>
 
                     {showAdvanced && (
-                        <div className="p-4 border-t border-cyber-border/80 space-y-4 bg-cyber-dark/40 text-xs">
-                            {/* Port specification and timing */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="p-3.5 border-t border-surface-border space-y-3.5 text-xs bg-surface/50">
+                            {/* Ports & Timing */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 <div>
-                                    <label className="block text-gray-300 font-medium mb-1.5">
-                                        Custom Port Range / List
+                                    <label className="block text-slate-300 font-mono text-[11px] mb-1">
+                                        Custom Ports (Nmap -p)
                                     </label>
                                     <input
                                         type="text"
                                         value={customPorts}
                                         onChange={(e) => setCustomPorts(e.target.value)}
-                                        placeholder="e.g. 80,443,8080-8090, or 1-1000"
-                                        className="input text-xs py-1.5"
+                                        placeholder="e.g. 80,443,8000-8080 or 1-65535"
+                                        className="input"
                                     />
-                                    <span className="text-[11px] text-gray-500 mt-1 block">
-                                        Leave empty to use profile default ports.
+                                    <span className="text-[10px] text-slate-500 mt-1 block">
+                                        Leave empty to use profile standard port list.
                                     </span>
                                 </div>
 
                                 <div>
-                                    <label className="block text-gray-300 font-medium mb-1.5">
-                                        Nmap Timing Policy
+                                    <label className="block text-slate-300 font-mono text-[11px] mb-1">
+                                        Nmap Scan Timing
                                     </label>
                                     <select
                                         value={timing}
                                         onChange={(e) => setTiming(e.target.value as ScanTiming)}
-                                        className="input text-xs py-1.5 bg-cyber-dark text-gray-200"
+                                        className="input bg-[#070b12]"
                                     >
                                         <option value="paranoid">T0 - Paranoid (IDS Evasion)</option>
-                                        <option value="sneaky">T1 - Sneaky (Slow / Stealth)</option>
+                                        <option value="sneaky">T1 - Sneaky (Stealth / Slow)</option>
                                         <option value="polite">T2 - Polite (Low Bandwidth)</option>
                                         <option value="normal">T3 - Normal (Standard)</option>
-                                        <option value="aggressive">T4 - Aggressive (Fast)</option>
-                                        <option value="insane">T5 - Insane (Speed-focused)</option>
+                                        <option value="aggressive">T4 - Aggressive (Recommended)</option>
+                                        <option value="insane">T5 - Insane (Fast Network)</option>
                                     </select>
                                 </div>
                             </div>
 
-                            {/* Service and OS detection flags */}
-                            <div className="flex flex-wrap gap-6 pt-1">
-                                <label className="flex items-center space-x-2 cursor-pointer text-gray-300">
+                            {/* Service / OS Detection Flags */}
+                            <div className="flex flex-wrap gap-4 pt-1">
+                                <label className="flex items-center gap-2 cursor-pointer text-slate-300 text-xs">
                                     <input
                                         type="checkbox"
                                         checked={serviceDetection}
                                         onChange={(e) => setServiceDetection(e.target.checked)}
-                                        className="rounded border-cyber-border text-cyber-blue focus:ring-0 bg-cyber-dark"
+                                        className="rounded border-slate-700 text-blue-600 focus:ring-0 bg-[#070b12]"
                                     />
-                                    <span>Enable Service Fingerprinting (-sV)</span>
+                                    <span>Enable Service Version Detection (-sV)</span>
                                 </label>
 
-                                <label className="flex items-center space-x-2 cursor-pointer text-gray-300">
+                                <label className="flex items-center gap-2 cursor-pointer text-slate-300 text-xs">
                                     <input
                                         type="checkbox"
                                         checked={osDetection}
                                         onChange={(e) => setOsDetection(e.target.checked)}
-                                        className="rounded border-cyber-border text-cyber-blue focus:ring-0 bg-cyber-dark"
+                                        className="rounded border-slate-700 text-blue-600 focus:ring-0 bg-[#070b12]"
                                     />
-                                    <span>Enable OS Detection (-O)</span>
+                                    <span>Enable Operating System Fingerprinting (-O)</span>
                                 </label>
                             </div>
 
-                            {/* Nuclei Template Tags Selector */}
-                            <div className="pt-2 border-t border-cyber-border/40">
+                            {/* Nuclei Template Tags */}
+                            <div className="pt-2 border-t border-surface-border">
                                 <div className="flex items-center justify-between mb-2">
-                                    <label className="text-gray-300 font-medium flex items-center space-x-1.5">
-                                        <Tag className="w-3.5 h-3.5 text-cyber-blue" />
-                                        <span>Nuclei Vulnerability Tags ({selectedTags.length} active)</span>
+                                    <label className="text-slate-300 font-mono text-[11px] flex items-center gap-1.5">
+                                        <Tag className="w-3.5 h-3.5 text-blue-400" />
+                                        <span>Nuclei Vulnerability Tags ({selectedTags.length} enabled)</span>
                                     </label>
-                                    <div className="space-x-2 text-[11px]">
+                                    <div className="space-x-2 text-[10px] font-mono">
                                         <button
                                             type="button"
                                             onClick={() => setSelectedTags(availableTags.map((t) => t.id))}
-                                            className="text-cyber-blue hover:underline"
+                                            className="text-blue-400 hover:underline"
                                         >
                                             Select All
                                         </button>
-                                        <span className="text-gray-600">|</span>
+                                        <span className="text-slate-600">|</span>
                                         <button
                                             type="button"
                                             onClick={() => setSelectedTags([])}
-                                            className="text-gray-400 hover:underline"
+                                            className="text-slate-400 hover:underline"
                                         >
                                             Clear
                                         </button>
@@ -480,10 +489,10 @@ export function ScanPanel() {
                                                 key={t.id}
                                                 type="button"
                                                 onClick={() => toggleTag(t.id)}
-                                                className={`px-2.5 py-1 rounded-full text-xs font-mono transition-all border ${
+                                                className={`px-2 py-0.5 rounded text-[10px] font-mono transition-all border ${
                                                     isSelected
-                                                        ? 'bg-cyber-blue/20 text-cyber-blue border-cyber-blue font-semibold'
-                                                        : 'bg-cyber-light/20 text-gray-400 border-cyber-border hover:border-gray-500'
+                                                        ? 'bg-blue-950/80 text-blue-300 border-blue-700 font-semibold'
+                                                        : 'bg-[#070b12] text-slate-400 border-surface-border hover:border-slate-600'
                                                 }`}
                                             >
                                                 #{t.id}
@@ -497,36 +506,41 @@ export function ScanPanel() {
                 </div>
 
                 {submitError && (
-                    <div className="flex items-center gap-2 p-3 bg-danger/10 border border-danger/30 rounded-lg text-danger">
-                        <AlertCircle className="w-5 h-5 flex-shrink-0" />
-                        <span className="text-sm">{submitError}</span>
+                    <div className="flex items-center gap-2 p-3 bg-red-950/40 border border-red-800 text-red-300 rounded text-xs font-mono">
+                        <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+                        <span>{submitError}</span>
                     </div>
                 )}
 
-                <button
-                    type="submit"
-                    disabled={
-                        isPending ||
-                        (scanMode === 'single'
-                            ? !target.trim() || (singleValidation !== null && !singleValidation.valid)
-                            : !rawBatchTargets.trim())
-                    }
-                    className="btn btn-primary w-full flex items-center justify-center gap-2 py-3 text-base font-semibold disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-cyber-blue/20"
-                >
-                    {isPending ? (
-                        <>
-                            <LoadingSpinner size="sm" />
-                            Dispatching Target Queue...
-                        </>
-                    ) : (
-                        <>
-                            <Play className="w-5 h-5 fill-current" />
-                            {scanMode === 'single'
-                                ? `Start Security Assessment (${profile.toUpperCase()})`
-                                : `Launch Batch Subnet Scan (${profile.toUpperCase()})`}
-                        </>
-                    )}
-                </button>
+                <div className="flex items-center justify-between pt-1">
+                    <div className="hidden sm:flex items-center gap-1.5 text-[11px] font-mono text-slate-400">
+                        <Info className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Results stream in real-time via SSE backend channel.</span>
+                    </div>
+
+                    <button
+                        type="submit"
+                        disabled={
+                            isPending ||
+                            (scanMode === 'single'
+                                ? !target.trim() || (singleValidation !== null && !singleValidation.valid)
+                                : !rawBatchTargets.trim())
+                        }
+                        className="btn btn-primary px-5 py-2 text-xs font-semibold uppercase tracking-wider ml-auto"
+                    >
+                        {isPending ? (
+                            <>
+                                <LoadingSpinner size="sm" />
+                                <span>Queuing Scan Task...</span>
+                            </>
+                        ) : (
+                            <>
+                                <Play className="w-3.5 h-3.5 fill-current" />
+                                <span>{scanMode === 'single' ? 'Launch Security Audit' : 'Execute Batch Assessment'}</span>
+                            </>
+                        )}
+                    </button>
+                </div>
             </form>
 
             {/* Batch Progress Modal */}
