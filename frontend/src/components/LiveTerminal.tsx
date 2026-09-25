@@ -62,7 +62,6 @@ export const LiveTerminal: React.FC<LiveTerminalProps> = ({
             try {
                 const eventData: ScanLogEvent = JSON.parse(e.data);
                 setLogs((prev) => {
-                    // Deduplicate by timestamp + message if replaying
                     const exists = prev.some(
                         (l) => l.timestamp === eventData.timestamp && l.message === eventData.message
                     );
@@ -91,7 +90,7 @@ export const LiveTerminal: React.FC<LiveTerminalProps> = ({
                     timestamp: new Date().toISOString(),
                     stage: 'completed',
                     level: 'success',
-                    message: `[STREAM COMPLETE] Scan execution finished with status: ${data.status || 'completed'}.`,
+                    message: `[STREAM COMPLETE] Scan execution finalized with status: ${data.status || 'completed'}.`,
                 };
                 setLogs((prev) => [...prev, finalEvent]);
             } catch {
@@ -101,7 +100,6 @@ export const LiveTerminal: React.FC<LiveTerminalProps> = ({
 
         eventSource.onerror = () => {
             setIsConnected(false);
-            // If scan already completed or done, close peacefully
             if (isDone || !isScanActive) {
                 eventSource.close();
             }
@@ -160,69 +158,69 @@ export const LiveTerminal: React.FC<LiveTerminalProps> = ({
 
     return (
         <div
-            className={`flex flex-col bg-cyber-dark/95 border border-cyber-border rounded-xl overflow-hidden shadow-2xl backdrop-blur-md transition-all duration-200 ${
+            className={`flex flex-col bg-[#05080e] border border-surface-border rounded-lg overflow-hidden shadow-2xl transition-all duration-200 ${
                 isExpanded ? 'fixed inset-4 z-50 h-auto' : 'h-[440px]'
             } ${className}`}
         >
             {/* Terminal Header */}
-            <div className="flex items-center justify-between px-4 py-3 bg-cyber-light/40 border-b border-cyber-border select-none">
-                <div className="flex items-center space-x-3">
+            <div className="flex items-center justify-between px-3.5 py-2.5 bg-[#090d16] border-b border-surface-border select-none">
+                <div className="flex items-center space-x-2.5">
                     <div className="flex space-x-1.5">
-                        <div className="w-3 h-3 rounded-full bg-red-500/80" />
-                        <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
-                        <div className="w-3 h-3 rounded-full bg-emerald-500/80" />
+                        <div className="w-2.5 h-2.5 rounded-full bg-red-500/80" />
+                        <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/80" />
+                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/80" />
                     </div>
-                    <div className="flex items-center space-x-2 text-xs font-mono text-gray-300">
-                        <Terminal className="w-4 h-4 text-cyber-blue" />
-                        <span className="font-semibold text-white">Live Execution Terminal</span>
-                        <span className="text-gray-500">|</span>
-                        <span>scan_id: {scanId.slice(0, 8)}...</span>
+                    <div className="flex items-center space-x-2 text-xs font-mono text-slate-300">
+                        <Terminal className="w-3.5 h-3.5 text-blue-400" />
+                        <span className="font-semibold text-white">Execution Console</span>
+                        <span className="text-slate-600">|</span>
+                        <span className="text-slate-400">scan_id: {scanId.slice(0, 8)}...</span>
                     </div>
                 </div>
 
                 {/* Status Indicator */}
-                <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-3">
                     <div className="flex items-center space-x-2">
                         {isConnected ? (
-                            <span className="flex items-center text-xs font-mono text-emerald-400">
-                                <Radio className="w-3.5 h-3.5 mr-1 text-emerald-400 animate-pulse" />
-                                LIVE STREAMING
+                            <span className="flex items-center text-[11px] font-mono text-emerald-400">
+                                <Radio className="w-3 h-3 mr-1 text-emerald-400 animate-pulse" />
+                                STREAMING LIVE
                             </span>
                         ) : isDone ? (
-                            <span className="text-xs font-mono text-gray-400">
-                                STREAM FINISHED
+                            <span className="text-[11px] font-mono text-slate-400">
+                                STREAM CLOSED
                             </span>
                         ) : (
-                            <span className="text-xs font-mono text-yellow-500">
-                                OFFLINE / BUFFERED
+                            <span className="text-[11px] font-mono text-amber-400">
+                                BUFFERED
                             </span>
                         )}
                     </div>
 
-                    <div className="flex items-center space-x-1 text-gray-400">
+                    <div className="flex items-center space-x-1 text-slate-400">
                         <button
                             onClick={() => setIsExpanded(!isExpanded)}
                             title={isExpanded ? 'Collapse' : 'Expand full screen'}
-                            className="p-1.5 hover:text-white hover:bg-cyber-light/60 rounded-md transition-colors"
+                            className="p-1 hover:text-white hover:bg-surface-light rounded transition-colors"
                         >
-                            {isExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                            {isExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
                         </button>
                     </div>
                 </div>
             </div>
 
             {/* Filter and Control Toolbar */}
-            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 bg-cyber-dark/60 border-b border-cyber-border text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 bg-[#070b12] border-b border-surface-border text-xs">
                 <div className="flex items-center space-x-2">
                     {/* Search */}
                     <div className="relative">
-                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-slate-500" />
                         <input
                             type="text"
                             placeholder="Filter console..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="bg-cyber-light/40 border border-cyber-border rounded pl-8 pr-2.5 py-1 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-cyber-blue"
+                            className="bg-[#05080e] border border-surface-border rounded pl-7 pr-2 py-0.5 text-xs text-slate-100 placeholder-slate-600 font-mono focus:outline-none focus:border-blue-500"
                         />
                     </div>
 
@@ -230,24 +228,24 @@ export const LiveTerminal: React.FC<LiveTerminalProps> = ({
                     <select
                         value={filterStage}
                         onChange={(e) => setFilterStage(e.target.value)}
-                        className="bg-cyber-light/40 border border-cyber-border rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-cyber-blue"
+                        className="bg-[#05080e] border border-surface-border rounded px-2 py-0.5 text-xs text-slate-300 font-mono focus:outline-none focus:border-blue-500"
                     >
                         <option value="all">All Stages</option>
                         <option value="init">Init</option>
-                        <option value="nmap">Port Scan (Nmap)</option>
-                        <option value="nuclei">Vuln Scan (Nuclei)</option>
+                        <option value="nmap">Nmap Discovery</option>
+                        <option value="nuclei">Nuclei Scanner</option>
                         <option value="ai">AI Analysis</option>
                     </select>
                 </div>
 
                 {/* Toolbar Buttons */}
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-1.5 font-mono">
                     <button
                         onClick={() => setAutoScroll(!autoScroll)}
-                        className={`flex items-center space-x-1 px-2.5 py-1 rounded border transition-colors ${
+                        className={`flex items-center space-x-1 px-2 py-0.5 rounded border text-[11px] transition-colors ${
                             autoScroll
-                                ? 'bg-cyber-blue/15 text-cyber-blue border-cyber-blue/40'
-                                : 'bg-cyber-light/40 text-gray-400 border-cyber-border hover:text-white'
+                                ? 'bg-blue-950/80 text-blue-400 border-blue-800'
+                                : 'bg-surface text-slate-400 border-surface-border hover:text-white'
                         }`}
                         title="Toggle Auto-Scroll"
                     >
@@ -257,8 +255,8 @@ export const LiveTerminal: React.FC<LiveTerminalProps> = ({
 
                     <button
                         onClick={handleCopyAll}
-                        className="flex items-center space-x-1 px-2.5 py-1 bg-cyber-light/40 hover:bg-cyber-light/80 text-gray-300 hover:text-white border border-cyber-border rounded transition-colors"
-                        title="Copy all logs to clipboard"
+                        className="flex items-center space-x-1 px-2 py-0.5 bg-surface hover:bg-surface-light text-slate-300 hover:text-white border border-surface-border rounded text-[11px] transition-colors"
+                        title="Copy logs to clipboard"
                     >
                         {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                         <span>{copied ? 'Copied' : 'Copy'}</span>
@@ -266,7 +264,7 @@ export const LiveTerminal: React.FC<LiveTerminalProps> = ({
 
                     <button
                         onClick={handleClearLogs}
-                        className="p-1 text-gray-400 hover:text-red-400 rounded transition-colors"
+                        className="p-1 text-slate-400 hover:text-rose-400 rounded transition-colors"
                         title="Clear terminal view"
                     >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -275,7 +273,7 @@ export const LiveTerminal: React.FC<LiveTerminalProps> = ({
                     {!isConnected && (
                         <button
                             onClick={handleReconnect}
-                            className="p-1 text-gray-400 hover:text-cyber-blue rounded transition-colors"
+                            className="p-1 text-slate-400 hover:text-blue-400 rounded transition-colors"
                             title="Reconnect stream"
                         >
                             <RotateCcw className="w-3.5 h-3.5" />
@@ -285,13 +283,13 @@ export const LiveTerminal: React.FC<LiveTerminalProps> = ({
             </div>
 
             {/* Terminal Output Display */}
-            <div className="flex-1 overflow-y-auto p-4 font-mono text-xs space-y-1.5 bg-[#0a0f1d] select-text">
+            <div className="flex-1 overflow-y-auto p-3 font-mono text-[11px] space-y-1 bg-[#05080e] select-text">
                 {filteredLogs.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-500 py-12">
-                        <Terminal className="w-8 h-8 mb-2 opacity-40 text-cyber-blue" />
+                    <div className="flex flex-col items-center justify-center h-full text-slate-500 py-12">
+                        <Terminal className="w-6 h-6 mb-2 opacity-30 text-blue-400" />
                         <p>No terminal output received yet.</p>
-                        <p className="text-[11px] text-gray-600 mt-1">
-                            Awaiting scanner process log stream from backend...
+                        <p className="text-[10px] text-slate-600 mt-0.5">
+                            Awaiting scanner process log stream from backend engine...
                         </p>
                     </div>
                 ) : (
@@ -302,14 +300,14 @@ export const LiveTerminal: React.FC<LiveTerminalProps> = ({
                         return (
                             <div
                                 key={`${log.timestamp}-${index}`}
-                                className="flex items-start space-x-2.5 leading-relaxed hover:bg-white/[0.02] px-1 py-0.5 rounded transition-colors group"
+                                className="flex items-start space-x-2 leading-relaxed hover:bg-white/[0.02] px-1 py-0.5 rounded transition-colors"
                             >
-                                <span className="text-gray-500 select-none shrink-0">
+                                <span className="text-slate-500 select-none shrink-0 text-[10px]">
                                     {formatLogTimestamp(log.timestamp)}
                                 </span>
 
                                 <span
-                                    className={`inline-block px-1.5 py-0.2 rounded border text-[10px] font-semibold tracking-wider uppercase shrink-0 ${stageBadge.colorClass}`}
+                                    className={`inline-block px-1.5 py-0.2 rounded border text-[9px] font-semibold tracking-wider uppercase shrink-0 font-mono ${stageBadge.colorClass}`}
                                 >
                                     {stageBadge.label}
                                 </span>
@@ -325,11 +323,11 @@ export const LiveTerminal: React.FC<LiveTerminalProps> = ({
             </div>
 
             {/* Terminal Footer status info */}
-            <div className="flex items-center justify-between px-4 py-1.5 bg-[#070b14] border-t border-cyber-border/60 text-[11px] font-mono text-gray-500">
-                <span>Total events: {logs.length} | Filtered: {filteredLogs.length}</span>
-                <span className="flex items-center space-x-1">
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyber-blue animate-pulse" />
-                    <span>XenoraSec Stream v1.0</span>
+            <div className="flex items-center justify-between px-3 py-1 bg-[#070b12] border-t border-surface-border text-[10px] font-mono text-slate-500">
+                <span>Total log events: {logs.length} | Displayed: {filteredLogs.length}</span>
+                <span className="flex items-center space-x-1.5">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500" />
+                    <span>XenoraSec Stream Service</span>
                 </span>
             </div>
         </div>
