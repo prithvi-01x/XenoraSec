@@ -1,6 +1,6 @@
 import type { ScanStatus } from '../types/api';
 import { getStatusBadgeClass } from '../utils/helpers';
-import { Loader2, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, Clock, AlertTriangle } from 'lucide-react';
 
 interface StatusBadgeProps {
     status: ScanStatus;
@@ -9,17 +9,17 @@ interface StatusBadgeProps {
 
 export function StatusBadge({ status, className = '' }: StatusBadgeProps) {
     const icons = {
-        running: <Loader2 className="w-3 h-3 animate-spin" />,
-        completed: <CheckCircle className="w-3 h-3" />,
-        failed: <XCircle className="w-3 h-3" />,
-        timeout: <Clock className="w-3 h-3" />,
-        partial: <CheckCircle className="w-3 h-3" />,
+        running: <Loader2 className="w-3 h-3 animate-spin text-blue-400" />,
+        completed: <CheckCircle className="w-3 h-3 text-emerald-400" />,
+        failed: <XCircle className="w-3 h-3 text-rose-400" />,
+        timeout: <Clock className="w-3 h-3 text-amber-400" />,
+        partial: <AlertTriangle className="w-3 h-3 text-amber-400" />,
     };
 
     return (
-        <span className={`badge ${getStatusBadgeClass(status)} inline-flex items-center gap-1 ${className}`}>
+        <span className={`badge ${getStatusBadgeClass(status)} ${className}`}>
             {icons[status]}
-            {status.toUpperCase()}
+            <span>{status.toUpperCase()}</span>
         </span>
     );
 }
