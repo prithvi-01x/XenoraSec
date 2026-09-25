@@ -747,22 +747,28 @@ XenoraSec incorporates an automated continuous integration and testing pipeline 
 
 ## 💻 Frontend Tour & Mobile Responsiveness
 
-The XenoraSec frontend is built with React 18, TypeScript, and Tailwind CSS to deliver an ultra-fast, responsive security operations dashboard:
+The XenoraSec frontend is built with React 19, TypeScript, and Tailwind CSS to deliver an ultra-fast, responsive security operations dashboard:
 
-### 1. Mobile-First Adaptive Interface
-- **Responsive Drawer Navigation**: On smartphones and tablets, the 256px sidebar cleanly collapses into a sliding drawer accessible via the top navigation hamburger button, with an animated backdrop overlay.
+### 1. Tactical Dark Cyber-Defense Interface
+- **Dark-First Theme**: Purpose-built palette featuring `#090d16` canvas, `#0e1526` surfaces, and `#1e2c47` borders with custom webkit tactical scrollbars.
+- **Monospace Telemetry**: Employs `JetBrains Mono` for precise readability of targets, port ranges, CVE tags, CVSS ratings, and timestamps.
+- **Collapsible Navigation & Queue Status**: Live worker queue gauges and backend connection heartbeat embedded directly in the persistent sidebar.
+- **Architecture Documentation**: For design tokens and components, see [UI Architecture](docs/UI_ARCHITECTURE.md), [Component Reference](docs/UI_COMPONENTS.md), and [Design Tokens](docs/DESIGN_TOKENS.md).
+
+### 2. Mobile-First Adaptive Interface
+- **Responsive Drawer Navigation**: On smartphones and tablets, the 240px tactical sidebar cleanly collapses into a sliding drawer accessible via the top navigation hamburger button, with an animated backdrop overlay.
 - **Dynamic Content Flow**: Prevents horizontal overflow on smaller screens while keeping complex data tables (ports, CVSS metrics) fully scrollable.
 
-### 2. Intelligent Target Specification
+### 3. Intelligent Target Specification
 - **Format Recognition Badges**: Dynamically identifies whether the input is an **IPv4 Address**, **Domain Host**, **Web URL**, or **Localhost** as you type.
 - **Proactive Input Linting**: Validates IP octets (0-255) and domain boundaries in real time, showing immediate contextual feedback prior to network dispatch.
 - **One-Click Test Presets**: Quick-fill buttons for fast testing and demonstrations (`scanme.nmap.org`, `https://example.com`).
 
-### 3. Interactive Scan Findings & Intelligence
-- **Real-Time Polling**: TanStack Query automatically polls for background scan progress with smart backoff.
+### 4. Interactive Scan Findings & Intelligence
+- **Real-Time Polling & SSE Stream**: TanStack Query automatically polls background scan state, with live execution logs streamed via `LiveTerminal` SSE channel.
 - **Multi-Dimensional Severity Filtering**: Filter findings instantly by severity level (Critical, High, Medium, Low, Info) or full-text query.
 - **Deep Vulnerability Inspection**: Click any finding to inspect its matching template ID, CVSS score, CWE tags, matched path, and official external vulnerability references.
-- **One-Click Partial & Failed Scan Retry**: Easily relaunch interrupted or partial scans directly from the action bar.
+- **One-Click Report Export**: Comprehensive export modal for compiling and downloading PDF, HTML, Markdown, and JSON vulnerability dossiers.
 
 ---
 
