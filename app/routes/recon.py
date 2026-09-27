@@ -85,3 +85,71 @@ async def execute_recon_endpoint(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Passive recon assessment failed: {str(e)}"
         )
+
+
+@router.get(
+    "/history",
+    response_model=ReconHistoryResponse,
+    description="Retrieve paginated history of passive reconnaissance assessments.",
+)
+async def get_recon_history_endpoint(
+    limit: int = Query(50, ge=1, le=200, description="Page size"),
+    offset: int = Query(0, ge=0, description="Offset"),
+    domain: Optional[str] = Query(None, description="Filter by domain keyword"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retrieve historical recon assessment records with pagination."""
+    records, total = await get_recon_history(db=db, limit=limit, offset=offset, domain=domain)
+
+    items = [
+        ReconHistoryItem(
+            id=r.id,
+            domain=r.domain,
+            status=r.status,
+            created_at=r.created_at,
+            duration=r.duration,
+            subdomains_count=r.subdomains_count,
+            active_subdomains_count=r.active_subdomains_count,
+            tech_detected_count=r.tech_detected_count,
+            security_score=r.security_score,
+        )
+        for r in records
+    ]
+    return ReconHistoryResponse(
+        items=items,
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get(
+    "/{domain}",
+    response_model=ReconResult,
+    responses={
+        404: {"model": ErrorResponse, "description": "No prior recon record found for domain"}
+    },
+)
+async def get_domain_recon_endpoint(
+    domain: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Retrieve the latest cached passive recon assessment result for domain."""
+    cleaned = sanitize_domain_input(domain)
+    record = await get_latest_recon_by_domain(db, cleaned)
+
+    if not record or not record.result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No passive reconnaissance record found for '{cleaned}'. Run a scan first."
+        )
+
+    try:
+        return ReconResult.model_validate(record.result)
+    except Exception as e:
+        logger.error(f"Failed to parse stored recon result for {cleaned}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to deserialize stored reconnaissance result"
+        )
+
