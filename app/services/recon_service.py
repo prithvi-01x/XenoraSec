@@ -426,6 +426,58 @@ class DNSIntelligenceResolver:
 
         return []
 
+    async def resolve_infrastructure_records(
+        self, domain: str
+    ) -> Tuple[List[DNSRecord], List[str], List[str], List[str]]:
+        """
+        Extract MX (mail exchangers), NS (nameservers), TXT, and SOA records.
+        Returns: (records, nameservers, mail_servers, txt_records)
+        """
+        clean_domain = domain.lower().strip().lstrip(".")
+        records: List[DNSRecord] = []
+        nameservers: List[str] = []
+        mail_servers: List[str] = []
+        txt_records: List[str] = []
+
+        # 1. NS records
+        ns_recs = await self._query_record_type(clean_domain, "NS")
+        for rec in ns_recs:
+            records.append(rec)
+            ns_host = rec.value.rstrip(".").lower()
+            if ns_host not in nameservers:
+                nameservers.append(ns_host)
+
+        # 2. MX records
+        mx_recs = await self._query_record_type(clean_domain, "MX")
+        for rec in mx_recs:
+            records.append(rec)
+            # Value can be "10 mail.example.com" or "mail.example.com"
+            parts = rec.value.split()
+            if len(parts) >= 2 and parts[0].isdigit():
+                rec.priority = int(parts[0])
+                mx_host = parts[1].rstrip(".").lower()
+            else:
+                mx_host = rec.value.rstrip(".").lower()
+
+            if mx_host not in mail_servers:
+                mail_servers.append(mx_host)
+
+        # 3. TXT records
+        txt_recs = await self._query_record_type(clean_domain, "TXT")
+        for rec in txt_recs:
+            records.append(rec)
+            cleaned_txt = rec.value.strip('"')
+            if cleaned_txt not in txt_records:
+                txt_records.append(cleaned_txt)
+
+        # 4. SOA records
+        soa_recs = await self._query_record_type(clean_domain, "SOA")
+        for rec in soa_recs:
+            records.append(rec)
+
+        return records, nameservers, mail_servers, txt_records
+
+
 
 
 
