@@ -152,3 +152,71 @@ class TechFingerprint(BaseModel):
     security_headers: List[SecurityHeaderCheck] = Field(default_factory=list, description="Audit of key defensive HTTP headers")
     security_score: int = Field(default=0, ge=0, le=100, description="Calculated security headers posture score (0-100)")
     ssl_info: Optional[SSLInfo] = Field(default=None, description="TLS certificate metrics")
+
+
+class ReconResult(BaseModel):
+    """Unified passive reconnaissance intelligence result."""
+    model_config = ConfigDict(from_attributes=True)
+
+    domain: str = Field(..., description="Root target domain")
+    target: str = Field(..., description="Target input string")
+    status: str = Field(default="completed", description="Recon operation status (completed, partial, failed)")
+    timestamp: datetime = Field(..., description="Completion timestamp")
+    duration: float = Field(default=0.0, description="Total execution duration in seconds")
+    subdomains_count: int = Field(default=0, description="Total unique subdomains identified")
+    active_subdomains_count: int = Field(default=0, description="Count of subdomains with verified DNS resolution")
+    subdomains: List[SubdomainRecord] = Field(default_factory=list, description="Discovered subdomains list")
+    dns: DNSIntelligence = Field(..., description="Comprehensive DNS intelligence report")
+    tech_stack: Optional[TechFingerprint] = Field(default=None, description="Passive technology fingerprinting analysis")
+    error: Optional[str] = Field(default=None, description="Error message if discovery encountered partial failures")
+
+
+class ReconRequest(BaseModel):
+    """Parameters for initiating a passive reconnaissance workflow."""
+    domain: str = Field(..., min_length=1, max_length=253, description="Target domain to passively analyze")
+    include_subdomains: bool = Field(default=True, description="Query Certificate Transparency logs for subdomains")
+    resolve_subdomains: bool = Field(default=True, description="Perform passive resolution check on discovered subdomains")
+    include_dns: bool = Field(default=True, description="Query comprehensive DNS record topology and mail security")
+    include_tech_stack: bool = Field(default=True, description="Perform passive HTTP header, cookie, and HTML fingerprinting")
+
+
+class ReconHistoryItem(BaseModel):
+    """Summary item for historical passive recon runs."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int = Field(..., description="Historical record ID")
+    domain: str = Field(..., description="Analyzed domain")
+    status: str = Field(default="completed", description="Execution status")
+    created_at: datetime = Field(..., description="Execution timestamp")
+    duration: float = Field(default=0.0, description="Duration in seconds")
+    subdomains_count: int = Field(default=0, description="Total subdomains discovered")
+    active_subdomains_count: int = Field(default=0, description="Active subdomains resolved")
+    tech_detected_count: int = Field(default=0, description="Count of detected technologies")
+    security_score: int = Field(default=0, description="Security headers posture score")
+
+
+class ReconHistoryResponse(BaseModel):
+    """Paginated collection of historical recon runs."""
+    model_config = ConfigDict(from_attributes=True)
+
+    items: List[ReconHistoryItem] = Field(default_factory=list, description="Recon history items")
+    total: int = Field(..., description="Total available records matching query")
+    limit: int = Field(..., description="Pagination page limit")
+    offset: int = Field(..., description="Pagination page offset")
+
+
+class SubdomainImportRequest(BaseModel):
+    """Request payload for importing discovered subdomains into Asset Inventory."""
+    subdomains: Optional[List[str]] = Field(default=None, description="Specific subdomains to import (None for all)")
+    target_status: str = Field(default="active", description="Default operational status for newly created assets")
+    default_criticality: str = Field(default="medium", description="Default criticality assigned to imported assets")
+    tags: List[str] = Field(default_factory=lambda: ["recon-discovered"], description="Tags attached to imported assets")
+
+
+class SubdomainImportResponse(BaseModel):
+    """Result of importing discovered subdomains into Asset Inventory."""
+    domain: str = Field(..., description="Target domain of recon run")
+    imported_count: int = Field(..., description="Number of new assets created")
+    skipped_count: int = Field(..., description="Number of subdomains already present in inventory")
+    asset_ids: List[int] = Field(default_factory=list, description="IDs of created or updated assets")
+    message: str = Field(..., description="Status summary message")

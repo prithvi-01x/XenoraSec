@@ -28,6 +28,26 @@ from app.schemas.stream import (
     ScanStreamMessage,
 )
 
+from app.schemas.recon import (
+    SubdomainSource,
+    SubdomainRecord,
+    DNSRecordType,
+    DNSRecord,
+    MailSecurityPosture,
+    DNSIntelligence,
+    TechStackCategory,
+    TechStackItem,
+    SecurityHeaderCheck,
+    SSLInfo,
+    TechFingerprint,
+    ReconResult,
+    ReconRequest,
+    ReconHistoryItem,
+    ReconHistoryResponse,
+    SubdomainImportRequest,
+    SubdomainImportResponse,
+)
+
 __all__ = [
     "ScanStatus",
     "SeverityLevel",
@@ -50,4 +70,22 @@ __all__ = [
     "StreamStage",
     "ScanLogEvent",
     "ScanStreamMessage",
+    "SubdomainSource",
+    "SubdomainRecord",
+    "DNSRecordType",
+    "DNSRecord",
+    "MailSecurityPosture",
+    "DNSIntelligence",
+    "TechStackCategory",
+    "TechStackItem",
+    "SecurityHeaderCheck",
+    "SSLInfo",
+    "TechFingerprint",
+    "ReconResult",
+    "ReconRequest",
+    "ReconHistoryItem",
+    "ReconHistoryResponse",
+    "SubdomainImportRequest",
+    "SubdomainImportResponse",
 ]
+
