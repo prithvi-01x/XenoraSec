@@ -13,6 +13,15 @@ from datetime import datetime, UTC
 from typing import List, Dict, Any, Optional, Set, Tuple
 from urllib.parse import urlparse
 
+try:
+    import dns.asyncresolver
+    import dns.resolver
+    import dns.rdatatype
+    HAS_DNSPYTHON = True
+except ImportError:
+    HAS_DNSPYTHON = False
+
+
 from app.schemas.recon import (
     SubdomainRecord,
     SubdomainSource,
@@ -300,6 +309,123 @@ class SubdomainResolver:
                 record.is_active = False
 
             return record
+
+
+class DNSIntelligenceResolver:
+    """
+    Comprehensive asynchronous DNS resolver providing record extraction (A, AAAA, CNAME,
+    MX, TXT, NS, SOA, PTR), DNS-over-HTTPS (DoH) fallback resilience, mail spoofing
+    posture evaluation (SPF/DMARC), and ASN/IP topology mapping.
+    """
+
+    PUBLIC_DNS_SERVERS = ["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4", "9.9.9.9"]
+    DOH_URL = "https://cloudflare-dns.com/dns-query"
+
+    def __init__(self, timeout: float = 4.0):
+        self.timeout = timeout
+        self.headers = {
+            "User-Agent": USER_AGENT,
+            "Accept": "application/dns-json",
+        }
+        self._resolver: Optional[Any] = None
+        if HAS_DNSPYTHON:
+            try:
+                res = dns.asyncresolver.Resolver()
+                res.nameservers = self.PUBLIC_DNS_SERVERS
+                res.timeout = timeout
+                res.lifetime = timeout
+                self._resolver = res
+            except Exception as e:
+                logger.warning(f"Could not initialize async dns resolver: {e}")
+
+    async def resolve_address_records(self, domain: str) -> Tuple[List[DNSRecord], List[str], List[str], List[str]]:
+        """
+        Extract A, AAAA, and CNAME records for a domain.
+        Returns: (all_records, ipv4_list, ipv6_list, cname_list)
+        """
+        clean_domain = domain.lower().strip().lstrip(".")
+        records: List[DNSRecord] = []
+        ipv4: List[str] = []
+        ipv6: List[str] = []
+        cnames: List[str] = []
+
+        # 1. Resolve A records (IPv4)
+        a_records = await self._query_record_type(clean_domain, "A")
+        for rec in a_records:
+            records.append(rec)
+            if rec.value not in ipv4:
+                ipv4.append(rec.value)
+
+        # 2. Resolve AAAA records (IPv6)
+        aaaa_records = await self._query_record_type(clean_domain, "AAAA")
+        for rec in aaaa_records:
+            records.append(rec)
+            if rec.value not in ipv6:
+                ipv6.append(rec.value)
+
+        # 3. Resolve CNAME records
+        cname_records = await self._query_record_type(clean_domain, "CNAME")
+        for rec in cname_records:
+            records.append(rec)
+            clean_cname = rec.value.rstrip(".")
+            if clean_cname not in cnames:
+                cnames.append(clean_cname)
+
+        return records, ipv4, ipv6, cnames
+
+    async def _query_record_type(self, host: str, rtype: str) -> List[DNSRecord]:
+        """Query a specific DNS record type using asyncresolver with DoH fallback."""
+        if self._resolver:
+            try:
+                answers = await self._resolver.resolve(host, rtype)
+                results: List[DNSRecord] = []
+                for rdata in answers:
+                    val = str(rdata).strip('"')
+                    results.append(
+                        DNSRecord(
+                            record_type=rtype,
+                            host=host,
+                            value=val,
+                            ttl=getattr(answers, "ttl", None),
+                        )
+                    )
+                return results
+            except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+                return []
+            except Exception as e:
+                logger.debug(f"Direct DNS query for {host} {rtype} failed, trying DoH: {e}")
+
+        # Fallback to DoH (DNS-over-HTTPS)
+        return await self._query_doh(host, rtype)
+
+    async def _query_doh(self, host: str, rtype: str) -> List[DNSRecord]:
+        """Query Cloudflare DNS-over-HTTPS endpoint for record type."""
+        url = f"{self.DOH_URL}?name={host}&type={rtype}"
+        try:
+            async with httpx.AsyncClient(headers=self.headers, timeout=self.timeout) as client:
+                resp = await client.get(url)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    answers = data.get("Answer", [])
+                    records: List[DNSRecord] = []
+                    for ans in answers:
+                        data_val = str(ans.get("data", "")).strip('"')
+                        ttl_val = ans.get("TTL")
+                        if data_val:
+                            records.append(
+                                DNSRecord(
+                                    record_type=rtype,
+                                    host=host,
+                                    value=data_val,
+                                    ttl=ttl_val,
+                                )
+                            )
+                    return records
+        except Exception as e:
+            logger.debug(f"DoH query for {host} {rtype} failed: {e}")
+
+        return []
+
 
 
 
