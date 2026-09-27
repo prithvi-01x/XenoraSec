@@ -25,6 +25,7 @@
 - [Architecture & Workflow](#-architecture)
 - [Dual-Engine Scanning](#-dual-engine-scanning)
 - [Multi-Target & CIDR Subnet Scanning](#-multi-target--cidr-subnet-scanning)
+- [Passive Reconnaissance & OSINT Engine](#-passive-reconnaissance--osint-engine)
 - [Asset Inventory & Attack Surface Management](#-asset-inventory--attack-surface-management)
 - [AI Risk Scoring Model](#-ai-risk-scoring-model)
 - [Security & Defensive Safeguards](#-security--defensive-safeguards)
@@ -54,6 +55,7 @@ Traditional security scanners either overwhelm security teams with disconnected 
 5. **Live Terminal Streaming (SSE & WebSocket)**: Interactive console component directly inside the web UI streaming subprocess logs, port discoveries, and template executions in real-time with circular buffer reconnect replay.
 6. **Custom Scan Profiles & Nuclei Tag Selector**: Fine-grained scanning with pre-configured profiles (Quick Recon, Full Web Audit, Network Discovery, Custom), port range overrides, Nmap timing policies (T0-T5), and interactive Nuclei tag chips.
 7. **Professional Security Report Generation**: One-click export to publication-ready ReportLab PDF, interactive standalone HTML with print styling, GitHub-flavored Markdown, and raw machine-readable JSON in Technical or Executive mode.
+8. **Passive Reconnaissance & OSINT Intelligence Engine**: Autonomous Certificate Transparency log mining (crt.sh), SAN/wildcard certificate decomposition, asynchronous multi-record DNS resolution (A, AAAA, CNAME, MX, TXT, NS, SOA, PTR), SPF/DMARC mail spoofing hygiene scoring, passive HTTP/HTTPS tech stack fingerprinter (server tokens, cookie heuristics, meta tags, CMS signatures), defensive security headers grading, and direct 1-click sync to Asset Inventory.
 
 ### 🏗️ Architecture & Pipeline
 ```mermaid
@@ -194,6 +196,82 @@ Targets can be supplied in flexible formats:
 - **Quick-Fill CIDR Chips**: One-click helper chips (`/30`, `/29`, `/28`, `/24`) for rapid testing and automated mask insertion.
 - **Live Target Counter**: Real-time reactive preview displays the total number of detected valid targets, invalid targets, and estimated total scans before launching.
 - **Batch Telemetry Modal**: A real-time popup monitor tracking per-scan progress, live execution state badges, target links, and final risk score summaries.
+
+---
+
+## 🌐 Passive Reconnaissance & OSINT Engine
+
+Modern attack surface mapping begins long before the first active port probe or vulnerability template is transmitted. XenoraSec integrates a dedicated, asynchronous **Passive Reconnaissance & OSINT Engine** designed to discover shadow infrastructure, map domain topologies, audit email security posture, and fingerprint web applications without alerting target Intrusion Detection Systems (IDS/IPS) or violating non-intrusive assessment boundaries.
+
+### 1. High-Level OSINT Architecture & Workflow
+
+The engine orchestrates four parallel analysis pipelines coordinated by `ReconEngine` (`app/services/recon_service.py`):
+
+```mermaid
+flowchart TD
+    subgraph Ingestion ["Recon Dispatch & Parameter Ingestion"]
+        REQ["Recon Request\n(Domain, Flags: Subdomains, DNS, TechStack)"]
+        VAL["Domain Sanitizer & FQDN Parser"]
+        REQ --> VAL
+    end
+
+    subgraph Phase1 ["Phase 1: Passive Subdomain Discovery"]
+        CRT["crt.sh CT Log Scraper\n(Exponential Backoff & Jitter)"]
+        PDNS["Passive DNS Fallback Provider\n(Cloudflare DoH / HackerTarget)"]
+        SAN["SAN & Wildcard Normalizer\n(Regex Strip & Deduplication)"]
+        RES["Async Bulk DNS Resolver\n(A & AAAA Record Mapping)"]
+        
+        VAL --> CRT
+        VAL --> PDNS
+        CRT --> SAN
+        PDNS --> SAN
+        SAN --> RES
+    end
+
+    subgraph Phase2 ["Phase 2: DNS & Network Topology"]
+        DNS["Async Multi-Record Resolver\n(A, AAAA, CNAME, MX, TXT, NS, SOA)"]
+        PTR["Reverse DNS (PTR) Resolution"]
+        ASN["ASN & IP Geolocation Enrichment"]
+        MAIL["Mail Posture Evaluator\n(SPF & DMARC Syntax & Policy Scoring)"]
+        
+        VAL --> DNS
+        DNS --> PTR
+        DNS --> ASN
+        DNS --> MAIL
+    end
+
+    subgraph Phase3 ["Phase 3: Passive Tech Stack Fingerprinting"]
+        HTTP["Async HTTP/HTTPS Response Probe\n(Header & Server Token Harvester)"]
+        COOKIES["Session & Framework Cookie Heuristics"]
+        HTML["HTML Meta Tags & Script Signatures"]
+        CMS["CMS & Frontend Framework Engine"]
+        SEC["Defensive Security Headers Grader\n(HSTS, CSP, X-Frame, X-Content)"]
+        
+        VAL --> HTTP
+        HTTP --> COOKIES
+        HTTP --> HTML
+        HTTP --> CMS
+        HTTP --> SEC
+    end
+
+    subgraph Integration ["Persistence & Tactical Action"]
+        HIST[("Recon History Ledger\n(recon_history Table)")]
+        ASSET["Asset Inventory Sync\n(1-Click Bulk Ingestion)"]
+        SCAN["Dual-Engine Active Scan\n(Nmap / Nuclei Pivot)"]
+        
+        RES --> HIST
+        MAIL --> HIST
+        SEC --> HIST
+        HIST --> ASSET
+        ASSET --> SCAN
+    end
+```
+
+### 2. Core Architectural Principles
+- **True Passive Discovery**: External infrastructure discovery relies strictly on public Certificate Transparency logs and historical DNS archives; zero packets are sent directly to unmapped subdomains during discovery.
+- **Fail-Soft Asynchronous Concurrency**: Discovery, DNS querying, and HTTP fingerprinting run concurrently via `asyncio.gather(return_exceptions=True)`. If crt.sh experiences temporary rate limiting or timeout, the engine automatically pivots to passive DNS fallbacks without aborting the audit.
+- **Resilient DNS-over-HTTPS (DoH)**: Leverages dnspython with Cloudflare DoH (`https://cloudflare-dns.com/dns-query`) fallback, guaranteeing record resolution even in restricted container environments where egress UDP port 53 is blocked.
+- **Persistent Tactical Intelligence**: Results are serialized into strongly-typed Pydantic schemas (`app/schemas/recon.py`) and recorded in the database `recon_history` table for historical delta analysis and rapid one-click export into the Asset Inventory.
 
 ---
 
