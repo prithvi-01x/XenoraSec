@@ -470,12 +470,74 @@ class DNSIntelligenceResolver:
             if cleaned_txt not in txt_records:
                 txt_records.append(cleaned_txt)
 
-        # 4. SOA records
-        soa_recs = await self._query_record_type(clean_domain, "SOA")
-        for rec in soa_recs:
-            records.append(rec)
-
         return records, nameservers, mail_servers, txt_records
+
+    async def evaluate_mail_security(
+        self, domain: str, root_txt_records: List[str]
+    ) -> MailSecurityPosture:
+        """
+        Evaluate domain email hygiene, SPF configuration, and DMARC enforcement.
+        """
+        clean_domain = domain.lower().strip().lstrip(".")
+        posture = MailSecurityPosture()
+
+        # 1. Evaluate SPF from root domain TXT records
+        spf_rec = None
+        for txt in root_txt_records:
+            if txt.lower().startswith("v=spf1"):
+                spf_rec = txt
+                break
+
+        if spf_rec:
+            posture.has_spf = True
+            posture.spf_record = spf_rec
+            lower_spf = spf_rec.lower()
+            if "-all" in lower_spf:
+                posture.spf_status = "pass"
+            elif "~all" in lower_spf:
+                posture.spf_status = "warning"
+            elif "?all" in lower_spf or "+all" in lower_spf:
+                posture.spf_status = "insecure"
+            else:
+                posture.spf_status = "warning"
+        else:
+            posture.has_spf = False
+            posture.spf_status = "missing"
+
+        # 2. Query DMARC at _dmarc.<domain>
+        dmarc_host = f"_dmarc.{clean_domain}"
+        dmarc_records = await self._query_record_type(dmarc_host, "TXT")
+        dmarc_rec = None
+        for rec in dmarc_records:
+            cleaned = rec.value.strip('"')
+            if cleaned.lower().startswith("v=dmarc1"):
+                dmarc_rec = cleaned
+                break
+
+        if dmarc_rec:
+            posture.has_dmarc = True
+            posture.dmarc_record = dmarc_rec
+            # Extract policy p=...
+            match = re.search(r"\bp=([a-zA-Z]+)", dmarc_rec, re.IGNORECASE)
+            if match:
+                policy = match.group(1).lower()
+                posture.dmarc_policy = policy
+            else:
+                posture.dmarc_policy = "none"
+        else:
+            posture.has_dmarc = False
+            posture.dmarc_policy = "missing"
+
+        # 3. Overall rating
+        if posture.has_dmarc and posture.dmarc_policy in ("reject", "quarantine") and posture.spf_status in ("pass", "warning"):
+            posture.security_rating = "secure"
+        elif (posture.has_spf or posture.has_dmarc) and posture.dmarc_policy != "reject":
+            posture.security_rating = "warning"
+        else:
+            posture.security_rating = "insecure"
+
+        return posture
+
 
 
 
