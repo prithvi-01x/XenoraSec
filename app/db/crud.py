@@ -799,3 +799,86 @@ async def get_recon_history(
     except SQLAlchemyError as e:
         logger.error(f"Failed to query recon history: {e}")
         return [], 0
+
+
+async def import_recon_subdomains_to_assets(
+    db: AsyncSession,
+    domain: str,
+    subdomain_records: List[dict],
+    selected_subdomains: Optional[List[str]] = None,
+    target_status: str = "active",
+    default_criticality: str = "medium",
+    tags: Optional[List[str]] = None
+) -> Tuple[int, int, List[int]]:
+    """
+    Bulk import discovered subdomains into the persistent Asset Inventory.
+
+    Returns:
+        (imported_count, skipped_count, asset_ids)
+    """
+    if tags is None:
+        tags = ["recon-discovered", f"root:{domain.lower()}"]
+    else:
+        tags = list(set(tags + ["recon-discovered", f"root:{domain.lower()}"]))
+
+    selected_set = {s.lower().strip() for s in selected_subdomains} if selected_subdomains else None
+
+    imported_count = 0
+    skipped_count = 0
+    asset_ids: List[int] = []
+
+    try:
+        for sub in subdomain_records:
+            subdomain = sub.get("subdomain", "").lower().strip()
+            if not subdomain:
+                continue
+
+            if selected_set is not None and subdomain not in selected_set:
+                continue
+
+            # Check if asset already exists in inventory
+            query = select(Asset).where(
+                or_(
+                    Asset.hostname == subdomain,
+                    Asset.ip_address == subdomain
+                )
+            )
+            res = await db.execute(query)
+            existing = res.scalars().first()
+
+            if existing:
+                skipped_count += 1
+                asset_ids.append(existing.id)
+                # Ensure tags are merged
+                cur_tags = existing.tags or []
+                merged_tags = list(set(cur_tags + tags))
+                existing.tags = merged_tags
+                continue
+
+            # Determine primary IP
+            ips = sub.get("ip_addresses", [])
+            primary_ip = ips[0] if (ips and isinstance(ips, list)) else subdomain
+
+            new_asset = Asset(
+                ip_address=primary_ip,
+                hostname=subdomain,
+                asset_type="domain",
+                status=target_status,
+                criticality=default_criticality,
+                risk_score=0.0,
+                tags=tags,
+                notes=f"Discovered via passive OSINT reconnaissance on root domain {domain}",
+            )
+            db.add(new_asset)
+            await db.flush()
+            imported_count += 1
+            asset_ids.append(new_asset.id)
+
+        await db.commit()
+        logger.info(f"Imported {imported_count} subdomains for {domain} (skipped {skipped_count})")
+        return imported_count, skipped_count, asset_ids
+
+    except SQLAlchemyError as e:
+        await db.rollback()
+        logger.error(f"Failed to import subdomains to assets for {domain}: {e}")
+        return 0, 0, []
