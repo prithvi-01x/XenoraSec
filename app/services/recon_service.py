@@ -7,8 +7,10 @@ mail security analysis (SPF/DMARC), ASN enrichment, and passive tech stack finge
 
 import asyncio
 import httpx
+import ipaddress
 import re
 import socket
+import ssl
 from datetime import datetime, UTC
 from typing import List, Dict, Any, Optional, Set, Tuple
 from urllib.parse import urlparse
@@ -16,6 +18,7 @@ from urllib.parse import urlparse
 try:
     import dns.asyncresolver
     import dns.resolver
+    import dns.reversename
     import dns.rdatatype
     HAS_DNSPYTHON = True
 except ImportError:
@@ -70,7 +73,7 @@ class CrtshClient:
         Fetch Certificate Transparency log entries for domain from crt.sh.
         Retries with exponential backoff if crt.sh returns 5xx or times out.
         """
-        clean_domain = domain.lower().strip().lstrip(".")
+        clean_domain = domain.lower().strip().strip(".")
         url = f"{CRTSH_BASE_URL}/?q=%.{clean_domain}&output=json"
 
         last_error = None
@@ -108,7 +111,7 @@ class CrtshClient:
         extracting all Subject Alternative Names (SANs), normalizing wildcards,
         and tracking certificate entry timestamps.
         """
-        clean_domain = domain.lower().strip().lstrip(".")
+        clean_domain = domain.lower().strip().strip(".")
         subdomain_map: Dict[str, Dict[str, Any]] = {}
 
         for entry in raw_records:
@@ -123,14 +126,17 @@ class CrtshClient:
                 raw_names.append(str(entry["common_name"]))
 
             for raw_name in raw_names:
-                name = raw_name.strip().lower()
+                name = raw_name.strip().lower().rstrip(".")
                 if not name:
                     continue
 
                 is_wildcard = False
                 if name.startswith("*."):
                     is_wildcard = True
-                    name = name[2:]
+                    name = re.sub(r"^(\*\.)+", "", name).rstrip(".")
+                elif name.startswith("*"):
+                    is_wildcard = True
+                    name = name.lstrip("*.").rstrip(".")
 
                 # Discard invalid characters or foreign domains
                 if not self._is_valid_subdomain(name, clean_domain):
@@ -168,13 +174,32 @@ class CrtshClient:
     @staticmethod
     def _is_valid_subdomain(subdomain: str, root_domain: str) -> bool:
         """Validate that subdomain is within root domain scope and well-formed."""
-        if subdomain == root_domain:
+        raw_sub = subdomain.strip()
+        raw_root = root_domain.strip()
+
+        # Reject empty or strings starting with a dot
+        if not raw_sub or not raw_root or raw_sub.startswith("."):
+            return False
+
+        clean_sub = raw_sub.lower().rstrip(".")
+        clean_root = raw_root.lower().rstrip(".")
+
+        if not clean_sub or not clean_root:
+            return False
+        if clean_sub == clean_root:
             return True
-        if not subdomain.endswith(f".{root_domain}"):
+        if not clean_sub.endswith(f".{clean_root}"):
             return False
-        # Discard names with invalid characters (only alphanumeric, hyphens, and dots)
-        if not re.match(r"^[a-zA-Z0-9_\-\.]+$", subdomain):
+        if ".." in clean_sub:
             return False
+        # Discard names with invalid characters (only alphanumeric, hyphens, underscores, and dots)
+        if not re.match(r"^[a-zA-Z0-9_\-\.]+$", clean_sub):
+            return False
+        # Labels check: labels should not start or end with a hyphen
+        labels = clean_sub.split(".")
+        for label in labels:
+            if not label or label.startswith("-") or label.endswith("-"):
+                return False
         return True
 
     @staticmethod
@@ -208,7 +233,7 @@ class PassiveDnsClient:
         Query passive DNS records for subdomains.
         Returns normalized SubdomainRecord instances.
         """
-        clean_domain = domain.lower().strip().lstrip(".")
+        clean_domain = domain.lower().strip().strip(".")
         url = f"{HACKERTARGET_URL}?q={clean_domain}"
 
         try:
@@ -217,7 +242,13 @@ class PassiveDnsClient:
                 if resp.status_code == 200:
                     text = resp.text.strip()
                     # HackerTarget returns 'subdomain,ip\nsubdomain,ip' or error string
-                    if "error" in text.lower() or "no dns records found" in text.lower():
+                    lower_text = text.lower()
+                    if (
+                        "error" in lower_text
+                        or "no dns records found" in lower_text
+                        or "api count exceeded" in lower_text
+                        or text.strip().startswith("<")
+                    ):
                         return []
 
                     records: List[SubdomainRecord] = []
@@ -226,13 +257,22 @@ class PassiveDnsClient:
                         parts = line.strip().split(",")
                         if not parts:
                             continue
-                        sub = parts[0].strip().lower()
-                        ip = parts[1].strip() if len(parts) > 1 else None
+                        sub = parts[0].strip().lower().rstrip(".")
+                        raw_ip = parts[1].strip() if len(parts) > 1 else None
 
                         if not sub or sub in seen:
                             continue
-                        if not sub.endswith(f".{clean_domain}") and sub != clean_domain:
+                        if not CrtshClient._is_valid_subdomain(sub, clean_domain):
                             continue
+
+                        # Validate IP if present
+                        valid_ips: List[str] = []
+                        if raw_ip:
+                            try:
+                                ipaddress.ip_address(raw_ip)
+                                valid_ips.append(raw_ip)
+                            except ValueError:
+                                pass
 
                         seen.add(sub)
                         records.append(
@@ -240,8 +280,8 @@ class PassiveDnsClient:
                                 subdomain=sub,
                                 domain=clean_domain,
                                 source=SubdomainSource.PASSIVE_DNS.value,
-                                ip_addresses=[ip] if ip else [],
-                                is_active=True if ip else None,
+                                ip_addresses=valid_ips,
+                                is_active=True if valid_ips else None,
                             )
                         )
                     logger.info(f"Passive DNS returned {len(records)} subdomains for {clean_domain}")
@@ -321,6 +361,17 @@ class DNSIntelligenceResolver:
     PUBLIC_DNS_SERVERS = ["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4", "9.9.9.9"]
     DOH_URL = "https://cloudflare-dns.com/dns-query"
 
+    DOH_TYPE_MAP = {
+        1: "A",
+        28: "AAAA",
+        5: "CNAME",
+        15: "MX",
+        16: "TXT",
+        2: "NS",
+        6: "SOA",
+        12: "PTR",
+    }
+
     def __init__(self, timeout: float = 4.0):
         self.timeout = timeout
         self.headers = {
@@ -340,31 +391,45 @@ class DNSIntelligenceResolver:
 
     async def resolve_address_records(self, domain: str) -> Tuple[List[DNSRecord], List[str], List[str], List[str]]:
         """
-        Extract A, AAAA, and CNAME records for a domain.
+        Extract A, AAAA, and CNAME records for a domain concurrently.
         Returns: (all_records, ipv4_list, ipv6_list, cname_list)
         """
-        clean_domain = domain.lower().strip().lstrip(".")
+        clean_domain = domain.lower().strip().strip(".")
         records: List[DNSRecord] = []
         ipv4: List[str] = []
         ipv6: List[str] = []
         cnames: List[str] = []
 
-        # 1. Resolve A records (IPv4)
-        a_records = await self._query_record_type(clean_domain, "A")
+        a_task = self._query_record_type(clean_domain, "A")
+        aaaa_task = self._query_record_type(clean_domain, "AAAA")
+        cname_task = self._query_record_type(clean_domain, "CNAME")
+        a_records, aaaa_records, cname_records = await asyncio.gather(a_task, aaaa_task, cname_task)
+
+        # 1. Process A records (validate IPv4 address format)
         for rec in a_records:
-            records.append(rec)
-            if rec.value not in ipv4:
-                ipv4.append(rec.value)
+            clean_val = rec.value.strip().rstrip(".")
+            try:
+                ip_obj = ipaddress.ip_address(clean_val)
+                if ip_obj.version == 4:
+                    records.append(rec)
+                    if clean_val not in ipv4:
+                        ipv4.append(clean_val)
+            except ValueError:
+                logger.debug(f"Discarding non-IPv4 value in A record: {rec.value}")
 
-        # 2. Resolve AAAA records (IPv6)
-        aaaa_records = await self._query_record_type(clean_domain, "AAAA")
+        # 2. Process AAAA records (validate IPv6 address format)
         for rec in aaaa_records:
-            records.append(rec)
-            if rec.value not in ipv6:
-                ipv6.append(rec.value)
+            clean_val = rec.value.strip().rstrip(".")
+            try:
+                ip_obj = ipaddress.ip_address(clean_val)
+                if ip_obj.version == 6:
+                    records.append(rec)
+                    if clean_val not in ipv6:
+                        ipv6.append(clean_val)
+            except ValueError:
+                logger.debug(f"Discarding non-IPv6 value in AAAA record: {rec.value}")
 
-        # 3. Resolve CNAME records
-        cname_records = await self._query_record_type(clean_domain, "CNAME")
+        # 3. Process CNAME records
         for rec in cname_records:
             records.append(rec)
             clean_cname = rec.value.rstrip(".")
@@ -399,7 +464,7 @@ class DNSIntelligenceResolver:
         return await self._query_doh(host, rtype)
 
     async def _query_doh(self, host: str, rtype: str) -> List[DNSRecord]:
-        """Query Cloudflare DNS-over-HTTPS endpoint for record type."""
+        """Query Cloudflare DNS-over-HTTPS endpoint for record type with type-filtering."""
         url = f"{self.DOH_URL}?name={host}&type={rtype}"
         try:
             async with httpx.AsyncClient(headers=self.headers, timeout=self.timeout) as client:
@@ -409,9 +474,12 @@ class DNSIntelligenceResolver:
                     answers = data.get("Answer", [])
                     records: List[DNSRecord] = []
                     for ans in answers:
+                        ans_type_num = ans.get("type")
+                        rec_type = self.DOH_TYPE_MAP.get(ans_type_num, rtype)
                         data_val = str(ans.get("data", "")).strip('"')
                         ttl_val = ans.get("TTL")
-                        if data_val:
+                        # Only accept records matching the queried record type
+                        if rec_type == rtype and data_val:
                             records.append(
                                 DNSRecord(
                                     record_type=rtype,
@@ -430,17 +498,21 @@ class DNSIntelligenceResolver:
         self, domain: str
     ) -> Tuple[List[DNSRecord], List[str], List[str], List[str]]:
         """
-        Extract MX (mail exchangers), NS (nameservers), TXT, and SOA records.
+        Extract MX (mail exchangers), NS (nameservers), TXT, and SOA records concurrently.
         Returns: (records, nameservers, mail_servers, txt_records)
         """
-        clean_domain = domain.lower().strip().lstrip(".")
+        clean_domain = domain.lower().strip().strip(".")
         records: List[DNSRecord] = []
         nameservers: List[str] = []
         mail_servers: List[str] = []
         txt_records: List[str] = []
 
+        ns_task = self._query_record_type(clean_domain, "NS")
+        mx_task = self._query_record_type(clean_domain, "MX")
+        txt_task = self._query_record_type(clean_domain, "TXT")
+        ns_recs, mx_recs, txt_recs = await asyncio.gather(ns_task, mx_task, txt_task)
+
         # 1. NS records
-        ns_recs = await self._query_record_type(clean_domain, "NS")
         for rec in ns_recs:
             records.append(rec)
             ns_host = rec.value.rstrip(".").lower()
@@ -448,7 +520,6 @@ class DNSIntelligenceResolver:
                 nameservers.append(ns_host)
 
         # 2. MX records
-        mx_recs = await self._query_record_type(clean_domain, "MX")
         for rec in mx_recs:
             records.append(rec)
             # Value can be "10 mail.example.com" or "mail.example.com"
@@ -463,7 +534,6 @@ class DNSIntelligenceResolver:
                 mail_servers.append(mx_host)
 
         # 3. TXT records
-        txt_recs = await self._query_record_type(clean_domain, "TXT")
         for rec in txt_recs:
             records.append(rec)
             cleaned_txt = rec.value.strip('"')
@@ -476,19 +546,22 @@ class DNSIntelligenceResolver:
         self, domain: str, root_txt_records: List[str]
     ) -> MailSecurityPosture:
         """
-        Evaluate domain email hygiene, SPF configuration, and DMARC enforcement.
+        Evaluate domain email hygiene, SPF configuration, DMARC enforcement, and DKIM hints.
+        Includes RFC 7208 multi-record PermError detection and RFC 7489 parent domain fallback.
         """
-        clean_domain = domain.lower().strip().lstrip(".")
+        clean_domain = domain.lower().strip().strip(".")
         posture = MailSecurityPosture()
 
         # 1. Evaluate SPF from root domain TXT records
-        spf_rec = None
-        for txt in root_txt_records:
-            if txt.lower().startswith("v=spf1"):
-                spf_rec = txt
-                break
+        spf_records = [txt for txt in root_txt_records if txt.lower().startswith("v=spf1")]
 
-        if spf_rec:
+        if len(spf_records) > 1:
+            # RFC 7208 Section 3.2: A domain MUST NOT have more than one SPF record (PermError)
+            posture.has_spf = True
+            posture.spf_record = "; ".join(spf_records)
+            posture.spf_status = "permerror"
+        elif len(spf_records) == 1:
+            spf_rec = spf_records[0]
             posture.has_spf = True
             posture.spf_record = spf_rec
             lower_spf = spf_rec.lower()
@@ -514,30 +587,52 @@ class DNSIntelligenceResolver:
                 dmarc_rec = cleaned
                 break
 
+        # Fallback to parent domain if subdomain and not found (RFC 7489 Section 6.6.3)
+        if not dmarc_rec and clean_domain.count(".") >= 2:
+            parent_domain = ".".join(clean_domain.split(".")[1:])
+            parent_dmarc_host = f"_dmarc.{parent_domain}"
+            parent_dmarc_records = await self._query_record_type(parent_dmarc_host, "TXT")
+            for rec in parent_dmarc_records:
+                cleaned = rec.value.strip('"')
+                if cleaned.lower().startswith("v=dmarc1"):
+                    dmarc_rec = cleaned
+                    # Check for subdomain policy sp=
+                    sp_match = re.search(r"\bsp=([a-zA-Z]+)", cleaned, re.IGNORECASE)
+                    if sp_match:
+                        posture.dmarc_policy = sp_match.group(1).lower()
+                    break
+
         if dmarc_rec:
             posture.has_dmarc = True
             posture.dmarc_record = dmarc_rec
-            # Extract policy p=...
-            match = re.search(r"\bp=([a-zA-Z]+)", dmarc_rec, re.IGNORECASE)
-            if match:
-                policy = match.group(1).lower()
-                posture.dmarc_policy = policy
-            else:
-                posture.dmarc_policy = "none"
+            if not posture.dmarc_policy or posture.dmarc_policy == "missing":
+                match = re.search(r"\bp=([a-zA-Z]+)", dmarc_rec, re.IGNORECASE)
+                if match:
+                    posture.dmarc_policy = match.group(1).lower()
+                else:
+                    posture.dmarc_policy = "none"
         else:
             posture.has_dmarc = False
             posture.dmarc_policy = "missing"
 
-        # 3. Overall rating
-        if posture.has_dmarc and posture.dmarc_policy in ("reject", "quarantine") and posture.spf_status in ("pass", "warning"):
+        # 3. Check DKIM hints from TXT records
+        for txt in root_txt_records:
+            lower_txt = txt.lower()
+            if "v=dkim1" in lower_txt or "k=rsa" in lower_txt or "domainkey" in lower_txt:
+                posture.has_dkim_indicator = True
+                break
+
+        # 4. Overall rating
+        if posture.spf_status == "permerror":
+            posture.security_rating = "insecure"
+        elif posture.has_dmarc and posture.dmarc_policy in ("reject", "quarantine") and posture.spf_status in ("pass", "warning"):
             posture.security_rating = "secure"
-        elif (posture.has_spf and posture.spf_status != "insecure") or (posture.has_dmarc and posture.dmarc_policy != "missing"):
+        elif (posture.has_spf and posture.spf_status not in ("insecure", "permerror")) or (posture.has_dmarc and posture.dmarc_policy != "missing"):
             posture.security_rating = "warning"
         else:
             posture.security_rating = "insecure"
 
         return posture
-
 
     async def resolve_reverse_dns(self, ips: List[str]) -> Dict[str, str]:
         """Perform reverse DNS (PTR) resolution for discovered IP addresses."""
@@ -545,14 +640,26 @@ class DNSIntelligenceResolver:
         results: Dict[str, str] = {}
 
         async def _ptr(ip: str):
+            clean_ip = ip.strip()
+            # Try dnspython first if available
+            if HAS_DNSPYTHON and self._resolver:
+                try:
+                    rev_name = dns.reversename.from_address(clean_ip)
+                    answers = await self._resolver.resolve(rev_name, "PTR")
+                    if answers:
+                        results[clean_ip] = str(answers[0]).rstrip(".")
+                        return
+                except Exception:
+                    pass
+
             try:
-                # Run socket.gethostbyaddr in thread pool
+                # Fallback to gethostbyaddr
                 host, _, _ = await asyncio.wait_for(
-                    loop.run_in_executor(None, socket.gethostbyaddr, ip),
+                    loop.run_in_executor(None, socket.gethostbyaddr, clean_ip),
                     timeout=2.0
                 )
                 if host:
-                    results[ip] = host
+                    results[clean_ip] = host
             except Exception:
                 pass
 
@@ -564,47 +671,60 @@ class DNSIntelligenceResolver:
     async def resolve_asn_details(self, ips: List[str]) -> Dict[str, Dict[str, Any]]:
         """
         Enrich IPv4/IPv6 addresses with BGP Autonomous System (ASN),
-        Organization, and Country intelligence using public RDAP API with fallback.
+        Organization, and Country intelligence using public RDAP API with follow-redirects.
         """
         results: Dict[str, Dict[str, Any]] = {}
         unique_ips = list(dict.fromkeys(ips))[:10]  # Bound to first 10 distinct IPs
 
         async def _query_ip(ip: str):
-            # Skip private/loopback
-            if ip.startswith(("127.", "10.", "172.16.", "192.168.", "::1", "localhost")):
-                results[ip] = {
-                    "asn": "AS0",
-                    "org": "Loopback / Private Subnet",
-                    "country": "LOCAL",
-                    "cidr": "Local"
-                }
+            clean_ip = ip.strip()
+            # Skip private/loopback/link-local/reserved addresses using ipaddress
+            try:
+                ip_obj = ipaddress.ip_address(clean_ip)
+                if (
+                    ip_obj.is_private
+                    or ip_obj.is_loopback
+                    or ip_obj.is_link_local
+                    or ip_obj.is_reserved
+                    or ip_obj.is_multicast
+                    or ip_obj.is_unspecified
+                ):
+                    results[clean_ip] = {
+                        "asn": "AS0",
+                        "org": "Loopback / Private Subnet",
+                        "country": "LOCAL",
+                        "cidr": "Local"
+                    }
+                    return
+            except ValueError:
+                # Not a valid IP address
                 return
 
             try:
-                # Query RDAP service (arin/apnic/ripe fallback)
-                url = f"https://rdap.arin.net/registry/ip/{ip}"
-                async with httpx.AsyncClient(headers=self.headers, timeout=3.0) as client:
+                # Query RDAP service with follow_redirects=True to handle APNIC/RIPE/AFRINIC referrals
+                url = f"https://rdap.arin.net/registry/ip/{clean_ip}"
+                async with httpx.AsyncClient(headers=self.headers, timeout=4.0, follow_redirects=True) as client:
                     resp = await client.get(url)
                     if resp.status_code == 200:
                         data = resp.json()
                         org = data.get("name") or data.get("customer", "")
                         handle = data.get("handle", "")
-                        results[ip] = {
+                        results[clean_ip] = {
                             "asn": handle or "AS-UNKNOWN",
                             "org": org or "Registered Network",
-                            "country": data.get("country", "US"),
-                            "cidr": data.get("startAddress", "")
+                            "country": data.get("country", "GLOBAL"),
+                            "cidr": data.get("startAddress", clean_ip)
                         }
                         return
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"RDAP lookup failed for {clean_ip}: {e}")
 
             # Fallback placeholder
-            results[ip] = {
+            results[clean_ip] = {
                 "asn": "AS-INTERNET",
                 "org": "Global Routed Address",
                 "country": "GLOBAL",
-                "cidr": ip
+                "cidr": clean_ip
             }
 
         tasks = [_query_ip(ip) for ip in unique_ips]
@@ -690,9 +810,9 @@ class PassiveTechFingerprinter:
     async def probe_endpoint(self, domain: str) -> Optional[Tuple[str, httpx.Response]]:
         """
         Probe endpoint over HTTPS first, falling back to HTTP.
-        Follows up to 5 redirects safely.
+        Follows redirects safely and returns the actual final URL and response.
         """
-        clean = domain.strip().lower().lstrip(".")
+        clean = domain.strip().lower().strip(".")
         for proto in ("https", "http"):
             url = f"{proto}://{clean}"
             try:
@@ -703,11 +823,70 @@ class PassiveTechFingerprinter:
                     verify=False  # Do not block on self-signed certs during passive recon
                 ) as client:
                     resp = await client.get(url)
-                    return url, resp
+                    final_url = str(resp.url)
+                    return final_url, resp
             except Exception as e:
                 logger.debug(f"Passive probe failed for {url}: {e}")
 
         return None
+
+    @staticmethod
+    def extract_tls_info(domain: str, timeout: float = 3.5) -> Optional[SSLInfo]:
+        """
+        Extract TLS certificate metadata (issuer, subject, validity, protocol) synchronously.
+        """
+        clean_host = domain.strip().lower().strip(".")
+        # Strip protocol/path if somehow present
+        clean_host = re.sub(r"^[a-zA-Z]+://", "", clean_host).split("/")[0].split(":")[0]
+        try:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+
+            with socket.create_connection((clean_host, 443), timeout=timeout) as sock:
+                with ctx.wrap_socket(sock, server_hostname=clean_host) as ssock:
+                    protocol = ssock.version()
+
+            # Attempt full certificate attribute query with default verification context
+            issuer_name = None
+            subject_name = clean_host
+            valid_from = None
+            valid_to = None
+            days_until_expiry = None
+
+            try:
+                ctx_verify = ssl.create_default_context()
+                with socket.create_connection((clean_host, 443), timeout=timeout) as sock2:
+                    with ctx_verify.wrap_socket(sock2, server_hostname=clean_host) as ssock2:
+                        cert_dict = ssock2.getpeercert()
+                        if cert_dict:
+                            sub_parts = dict(x[0] for x in cert_dict.get("subject", ()))
+                            iss_parts = dict(x[0] for x in cert_dict.get("issuer", ()))
+                            subject_name = sub_parts.get("commonName") or clean_host
+                            issuer_name = iss_parts.get("organizationName") or iss_parts.get("commonName") or "Trusted CA"
+                            valid_from = cert_dict.get("notBefore")
+                            valid_to = cert_dict.get("notAfter")
+                            if valid_to:
+                                try:
+                                    exp_dt = datetime.strptime(valid_to, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=UTC)
+                                    days_until_expiry = max(0, (exp_dt - datetime.now(UTC)).days)
+                                except Exception:
+                                    pass
+            except Exception:
+                issuer_name = "Self-Signed / Private CA"
+
+            return SSLInfo(
+                enabled=True,
+                issuer=issuer_name,
+                subject=subject_name,
+                valid_from=valid_from,
+                valid_to=valid_to,
+                days_until_expiry=days_until_expiry,
+                protocol=protocol or "TLSv1.3",
+            )
+        except Exception as e:
+            logger.debug(f"TLS extraction failed for {clean_host}: {e}")
+            return None
 
     def analyze_headers(self, headers: httpx.Headers) -> List[TechStackItem]:
         """Inspect HTTP response headers for web servers and runtime tokens."""
@@ -1115,10 +1294,14 @@ class PassiveTechFingerprinter:
         # SSL/TLS Info
         ssl_info = None
         if target_url.startswith("https://"):
-            ssl_info = SSLInfo(
-                enabled=True,
-                protocol="TLSv1.3",
-            )
+            try:
+                clean_host = re.sub(r"^[a-zA-Z]+://", "", target_url).split("/")[0].split(":")[0]
+                ssl_info = await asyncio.wait_for(
+                    asyncio.to_thread(self.extract_tls_info, clean_host),
+                    timeout=4.0
+                )
+            except Exception:
+                ssl_info = SSLInfo(enabled=True, protocol="TLSv1.3")
 
         return TechFingerprint(
             target_url=target_url,
@@ -1161,7 +1344,8 @@ class ReconEngine:
         """
         Execute an end-to-end passive OSINT reconnaissance assessment for domain.
         """
-        clean_domain = domain.lower().strip().lstrip(".").split("/")[0].split(":")[0]
+        clean_domain = re.sub(r"^[a-zA-Z]+://", "", domain.strip().lower())
+        clean_domain = clean_domain.split("/")[0].split(":")[0].strip().strip(".")
         start_time = asyncio.get_running_loop().time()
 
         async with self.semaphore:
