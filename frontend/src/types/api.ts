@@ -282,3 +282,148 @@ export interface BatchScanStatusResponse {
     overall_risk_score: number;
     created_at?: string;
 }
+
+// ==================== PASSIVE RECONNAISSANCE & OSINT ====================
+
+export interface SubdomainRecord {
+    subdomain: string;
+    domain: string;
+    ip_addresses: string[];
+    cnames?: string[];
+    source: string;
+    is_active?: boolean | null;
+    is_wildcard: boolean;
+    first_seen?: string | null;
+    last_seen?: string | null;
+    asn_info?: string | null;
+}
+
+export interface DNSRecord {
+    record_type: string;
+    host: string;
+    value: string;
+    ttl?: number | null;
+    priority?: number | null;
+}
+
+export interface MailSecurityPosture {
+    has_spf: boolean;
+    spf_record?: string | null;
+    spf_status: 'pass' | 'warning' | 'insecure' | 'missing' | string;
+    has_dmarc: boolean;
+    dmarc_record?: string | null;
+    dmarc_policy?: 'reject' | 'quarantine' | 'none' | 'missing' | string;
+    has_dkim_indicator: boolean;
+    security_rating: 'secure' | 'warning' | 'insecure' | string;
+}
+
+export interface DNSIntelligence {
+    domain: string;
+    records: DNSRecord[];
+    nameservers: string[];
+    mail_servers: string[];
+    ipv4_addresses: string[];
+    ipv6_addresses: string[];
+    cname_records: string[];
+    txt_records: string[];
+    reverse_dns: Record<string, string>;
+    mail_security?: MailSecurityPosture | null;
+    asn_details: Record<string, { asn?: string; org?: string; country?: string; cidr?: string }>;
+}
+
+export interface TechStackItem {
+    name: string;
+    category: string;
+    version?: string | null;
+    confidence: number;
+    match_evidence?: string | null;
+    icon?: string | null;
+}
+
+export interface SecurityHeaderCheck {
+    header: string;
+    present: boolean;
+    value?: string | null;
+    status: 'pass' | 'warning' | 'missing' | string;
+    recommendation?: string | null;
+}
+
+export interface SSLInfo {
+    enabled: boolean;
+    issuer?: string | null;
+    subject?: string | null;
+    valid_from?: string | null;
+    valid_to?: string | null;
+    days_until_expiry?: number | null;
+    protocol?: string | null;
+}
+
+export interface TechFingerprint {
+    target_url: string;
+    status_code?: number | null;
+    title?: string | null;
+    web_servers: TechStackItem[];
+    frameworks: TechStackItem[];
+    cms: TechStackItem[];
+    cdn_waf: TechStackItem[];
+    all_technologies: TechStackItem[];
+    security_headers: SecurityHeaderCheck[];
+    security_score: number;
+    ssl_info?: SSLInfo | null;
+}
+
+export interface ReconResult {
+    domain: string;
+    target: string;
+    status: string;
+    timestamp: string;
+    duration: number;
+    subdomains_count: number;
+    active_subdomains_count: number;
+    subdomains: SubdomainRecord[];
+    dns: DNSIntelligence;
+    tech_stack?: TechFingerprint | null;
+    error?: string | null;
+}
+
+export interface ReconRequest {
+    domain: string;
+    include_subdomains?: boolean;
+    resolve_subdomains?: boolean;
+    include_dns?: boolean;
+    include_tech_stack?: boolean;
+}
+
+export interface ReconHistoryItem {
+    id: number;
+    domain: string;
+    status: string;
+    created_at: string;
+    duration: number;
+    subdomains_count: number;
+    active_subdomains_count: number;
+    tech_detected_count: number;
+    security_score: number;
+}
+
+export interface ReconHistoryResponse {
+    items: ReconHistoryItem[];
+    total: number;
+    limit: number;
+    offset: number;
+}
+
+export interface SubdomainImportRequest {
+    subdomains?: string[] | null;
+    target_status?: string;
+    default_criticality?: string;
+    tags?: string[];
+}
+
+export interface SubdomainImportResponse {
+    domain: string;
+    imported_count: number;
+    skipped_count: number;
+    asset_ids: number[];
+    message: string;
+}
