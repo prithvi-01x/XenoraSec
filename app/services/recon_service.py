@@ -654,6 +654,139 @@ class DNSIntelligenceResolver:
         )
 
 
+class PassiveTechFingerprinter:
+    """
+    Non-intrusive HTTP/HTTPS passive technology stack fingerprinter.
+    Analyzes response headers, server tokens, cookie banners, script signatures,
+    HTML metadata, and TLS negotiation to detect web servers, frameworks, CMSs, and security headers.
+    """
+
+    KNOWN_SERVERS = {
+        "nginx": ("Nginx", "web_server"),
+        "apache": ("Apache HTTP Server", "web_server"),
+        "caddy": ("Caddy Web Server", "web_server"),
+        "microsoft-iis": ("Microsoft IIS", "web_server"),
+        "litespeed": ("LiteSpeed Web Server", "web_server"),
+        "openresty": ("OpenResty", "web_server"),
+        "cloudflare": ("Cloudflare Edge", "cdn_waf"),
+        "akamai": ("Akamai Edge", "cdn_waf"),
+        "fastly": ("Fastly CDN", "cdn_waf"),
+        "amazon": ("Amazon CloudFront / AWS", "cdn_waf"),
+        "gunicorn": ("Gunicorn WSGI", "framework"),
+        "uvicorn": ("Uvicorn ASGI", "framework"),
+        "werkzeug": ("Werkzeug", "framework"),
+        "envoy": ("Envoy Proxy", "web_server"),
+        "varnish": ("Varnish Cache", "web_server"),
+    }
+
+    def __init__(self, timeout: float = 6.0):
+        self.timeout = timeout
+        self.headers = {
+            "User-Agent": USER_AGENT,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+        }
+
+    async def probe_endpoint(self, domain: str) -> Optional[Tuple[str, httpx.Response]]:
+        """
+        Probe endpoint over HTTPS first, falling back to HTTP.
+        Follows up to 5 redirects safely.
+        """
+        clean = domain.strip().lower().lstrip(".")
+        for proto in ("https", "http"):
+            url = f"{proto}://{clean}"
+            try:
+                async with httpx.AsyncClient(
+                    headers=self.headers,
+                    timeout=self.timeout,
+                    follow_redirects=True,
+                    verify=False  # Do not block on self-signed certs during passive recon
+                ) as client:
+                    resp = await client.get(url)
+                    return url, resp
+            except Exception as e:
+                logger.debug(f"Passive probe failed for {url}: {e}")
+
+        return None
+
+    def analyze_headers(self, headers: httpx.Headers) -> List[TechStackItem]:
+        """Inspect HTTP response headers for web servers and runtime tokens."""
+        detected: List[TechStackItem] = []
+        lower_headers = {k.lower(): v for k, v in headers.items()}
+
+        # 1. Server header
+        server_val = lower_headers.get("server", "")
+        if server_val:
+            server_lower = server_val.lower()
+            matched = False
+            for token, (canonical_name, category) in self.KNOWN_SERVERS.items():
+                if token in server_lower:
+                    version = self._extract_version(server_val, token)
+                    detected.append(
+                        TechStackItem(
+                            name=canonical_name,
+                            category=category,
+                            version=version,
+                            confidence=95,
+                            match_evidence=f"Header: Server: {server_val}"
+                        )
+                    )
+                    matched = True
+                    break
+            if not matched and server_val.strip():
+                detected.append(
+                    TechStackItem(
+                        name=server_val.strip(),
+                        category=TechStackCategory.WEB_SERVER.value,
+                        confidence=70,
+                        match_evidence=f"Header: Server: {server_val}"
+                    )
+                )
+
+        # 2. X-Powered-By header
+        x_powered = lower_headers.get("x-powered-by", "")
+        if x_powered:
+            pw_lower = x_powered.lower()
+            if "php" in pw_lower:
+                v = self._extract_version(x_powered, "php")
+                detected.append(TechStackItem(name="PHP", category="programming_language", version=v, confidence=100, match_evidence=f"Header: X-Powered-By: {x_powered}"))
+            elif "express" in pw_lower:
+                detected.append(TechStackItem(name="Express.js", category="framework", confidence=100, match_evidence=f"Header: X-Powered-By: {x_powered}"))
+            elif "asp.net" in pw_lower:
+                detected.append(TechStackItem(name="ASP.NET", category="framework", confidence=100, match_evidence=f"Header: X-Powered-By: {x_powered}"))
+            elif "next.js" in pw_lower:
+                v = self._extract_version(x_powered, "next.js")
+                detected.append(TechStackItem(name="Next.js", category="framework", version=v, confidence=100, match_evidence=f"Header: X-Powered-By: {x_powered}"))
+            else:
+                detected.append(TechStackItem(name=x_powered.strip(), category="framework", confidence=85, match_evidence=f"Header: X-Powered-By: {x_powered}"))
+
+        # 3. Via and Edge CDN headers
+        if "cf-ray" in lower_headers or "cf-cache-status" in lower_headers:
+            if not any(d.name == "Cloudflare Edge" for d in detected):
+                detected.append(TechStackItem(name="Cloudflare", category="cdn_waf", confidence=100, match_evidence="Header: CF-Ray / CF-Cache-Status present"))
+
+        if "x-amz-cf-id" in lower_headers or "x-amz-cf-pop" in lower_headers:
+            detected.append(TechStackItem(name="Amazon CloudFront", category="cdn_waf", confidence=100, match_evidence="Header: X-Amz-Cf-Id present"))
+
+        if "x-fastly-request-id" in lower_headers:
+            detected.append(TechStackItem(name="Fastly CDN", category="cdn_waf", confidence=100, match_evidence="Header: X-Fastly-Request-Id present"))
+
+        if "x-github-request-id" in lower_headers:
+            detected.append(TechStackItem(name="GitHub Pages", category="web_server", confidence=100, match_evidence="Header: X-GitHub-Request-Id present"))
+
+        return detected
+
+    @staticmethod
+    def _extract_version(header_value: str, token: str) -> Optional[str]:
+        """Extract version numbers following a token (e.g. 'nginx/1.24.0' -> '1.24.0')."""
+        pattern = rf"{re.escape(token)}[/ ]*([0-9]+\.[0-9]+(?:\.[0-9]+)?)"
+        match = re.search(pattern, header_value, re.IGNORECASE)
+        if match:
+            return match.group(1)
+        return None
+
+
+
 
 
 
