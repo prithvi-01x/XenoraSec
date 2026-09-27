@@ -86,3 +86,69 @@ class DNSIntelligence(BaseModel):
     reverse_dns: Dict[str, str] = Field(default_factory=dict, description="Reverse PTR mappings (IP -> Hostname)")
     mail_security: Optional[MailSecurityPosture] = Field(default=None, description="Email spoofing posture analysis")
     asn_details: Dict[str, Dict[str, Any]] = Field(default_factory=dict, description="BGP Autonomous System details per IP")
+
+
+class TechStackCategory(str, Enum):
+    WEB_SERVER = "web_server"
+    FRAMEWORK = "framework"
+    CMS = "cms"
+    CDN_WAF = "cdn_waf"
+    PROGRAMMING_LANGUAGE = "programming_language"
+    SECURITY_TOOL = "security_tool"
+    UI_LIBRARY = "ui_library"
+    ANALYTICS = "analytics"
+    DATABASE = "database"
+    OPERATING_SYSTEM = "operating_system"
+
+
+class TechStackItem(BaseModel):
+    """Identified technology or framework entity."""
+    model_config = ConfigDict(from_attributes=True)
+
+    name: str = Field(..., description="Canonical product or technology name")
+    category: str = Field(default=TechStackCategory.FRAMEWORK.value, description="Functional taxonomy classification")
+    version: Optional[str] = Field(default=None, description="Discovered version string if identifiable")
+    confidence: int = Field(default=100, ge=0, le=100, description="Detection confidence score (0-100%)")
+    match_evidence: Optional[str] = Field(default=None, description="Header, cookie, or DOM signature evidence")
+    icon: Optional[str] = Field(default=None, description="Optional icon badge identifier")
+
+
+class SecurityHeaderCheck(BaseModel):
+    """Evaluation result for a specific HTTP security header."""
+    model_config = ConfigDict(from_attributes=True)
+
+    header: str = Field(..., description="Canonical HTTP response header key")
+    present: bool = Field(..., description="Whether header was returned in server response")
+    value: Optional[str] = Field(default=None, description="Observed header value")
+    status: str = Field(default="missing", description="Compliance rating (pass, warning, missing)")
+    recommendation: Optional[str] = Field(default=None, description="Remediation guidance if misconfigured or absent")
+
+
+class SSLInfo(BaseModel):
+    """SSL/TLS cipher and certificate attributes."""
+    model_config = ConfigDict(from_attributes=True)
+
+    enabled: bool = Field(default=False, description="Whether endpoint successfully negotiated HTTPS/TLS")
+    issuer: Optional[str] = Field(default=None, description="Certificate authority issuer string")
+    subject: Optional[str] = Field(default=None, description="Certificate common name / subject")
+    valid_from: Optional[str] = Field(default=None, description="Certificate validity start date")
+    valid_to: Optional[str] = Field(default=None, description="Certificate validity end date")
+    days_until_expiry: Optional[int] = Field(default=None, description="Remaining validity window in days")
+    protocol: Optional[str] = Field(default=None, description="Negotiated TLS protocol version (e.g. TLSv1.3)")
+
+
+class TechFingerprint(BaseModel):
+    """Passive web server, framework, CMS, and security header audit."""
+    model_config = ConfigDict(from_attributes=True)
+
+    target_url: str = Field(..., description="Probed URL endpoint")
+    status_code: Optional[int] = Field(default=None, description="HTTP response status code")
+    title: Optional[str] = Field(default=None, description="Extracted HTML page title")
+    web_servers: List[TechStackItem] = Field(default_factory=list, description="Identified web servers (Nginx, Apache, etc.)")
+    frameworks: List[TechStackItem] = Field(default_factory=list, description="Backend and frontend frameworks")
+    cms: List[TechStackItem] = Field(default_factory=list, description="Content Management Systems (WordPress, Drupal)")
+    cdn_waf: List[TechStackItem] = Field(default_factory=list, description="Edge CDN or WAF providers (Cloudflare, Akamai)")
+    all_technologies: List[TechStackItem] = Field(default_factory=list, description="Consolidated list of detected technologies")
+    security_headers: List[SecurityHeaderCheck] = Field(default_factory=list, description="Audit of key defensive HTTP headers")
+    security_score: int = Field(default=0, ge=0, le=100, description="Calculated security headers posture score (0-100)")
+    ssl_info: Optional[SSLInfo] = Field(default=None, description="TLS certificate metrics")
