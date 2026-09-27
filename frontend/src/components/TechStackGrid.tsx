@@ -231,6 +231,68 @@ export function TechStackGrid({ techStack }: TechStackGridProps) {
                     {techStack.security_headers.map((check, idx) => renderHeaderCheck(check, idx))}
                 </div>
             </div>
+
+            {/* SSL/TLS Certificate & Transport Encryption Card */}
+            {techStack.ssl_info && techStack.ssl_info.enabled && (
+                <div className="bg-surface rounded-lg border border-surface-border p-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded bg-emerald-600/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                                <Lock className="w-4 h-4" />
+                            </div>
+                            <div>
+                                <h4 className="text-sm font-semibold text-white font-mono flex items-center gap-2">
+                                    SSL / TLS Transport Encryption
+                                    <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">
+                                        {techStack.ssl_info.protocol || 'TLS Negotiated'}
+                                    </span>
+                                </h4>
+                                <p className="text-xs text-slate-400">
+                                    Cryptographic cipher negotiation and public key infrastructure certificate metrics
+                                </p>
+                            </div>
+                        </div>
+                        {techStack.ssl_info.days_until_expiry !== undefined && techStack.ssl_info.days_until_expiry !== null && (
+                            <span className={`text-xs font-mono px-2.5 py-1 rounded border ${
+                                techStack.ssl_info.days_until_expiry > 30
+                                    ? 'bg-emerald-950/80 text-emerald-400 border-emerald-700'
+                                    : techStack.ssl_info.days_until_expiry > 7
+                                    ? 'bg-amber-950/80 text-amber-400 border-amber-700'
+                                    : 'bg-rose-950/80 text-rose-400 border-rose-700'
+                            }`}>
+                                {techStack.ssl_info.days_until_expiry} days until expiry
+                            </span>
+                        )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs font-mono">
+                        <div className="p-3 rounded bg-[#070b13] border border-surface-border space-y-1">
+                            <span className="text-slate-500 text-[10px] uppercase">Common Name / Subject</span>
+                            <p className="text-slate-200 font-semibold truncate" title={techStack.ssl_info.subject || 'N/A'}>
+                                {techStack.ssl_info.subject || 'N/A'}
+                            </p>
+                        </div>
+                        <div className="p-3 rounded bg-[#070b13] border border-surface-border space-y-1">
+                            <span className="text-slate-500 text-[10px] uppercase">Issuing CA</span>
+                            <p className="text-slate-200 font-semibold truncate" title={techStack.ssl_info.issuer || 'N/A'}>
+                                {techStack.ssl_info.issuer || 'N/A'}
+                            </p>
+                        </div>
+                        <div className="p-3 rounded bg-[#070b13] border border-surface-border space-y-1">
+                            <span className="text-slate-500 text-[10px] uppercase">Valid From</span>
+                            <p className="text-slate-200 truncate" title={techStack.ssl_info.valid_from || 'N/A'}>
+                                {techStack.ssl_info.valid_from || 'N/A'}
+                            </p>
+                        </div>
+                        <div className="p-3 rounded bg-[#070b13] border border-surface-border space-y-1">
+                            <span className="text-slate-500 text-[10px] uppercase">Valid Until</span>
+                            <p className="text-slate-200 truncate" title={techStack.ssl_info.valid_to || 'N/A'}>
+                                {techStack.ssl_info.valid_to || 'N/A'}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
