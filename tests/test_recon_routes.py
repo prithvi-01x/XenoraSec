@@ -162,3 +162,74 @@ async def test_get_domain_recon_and_history(client):
     assert filtered_res.status_code == 200
     assert filtered_res.json()["total"] >= 1
 
+
+@pytest.mark.asyncio
+async def test_import_to_assets_endpoint(client):
+    from app.db.database import AsyncSessionLocal
+    from app.db.crud import save_recon_result, delete_asset
+
+    target = "asset-sync-corp.com"
+    sample_subdomains = [
+        {"subdomain": f"vpn.{target}", "domain": target, "ip_addresses": ["198.51.100.1"], "is_active": True},
+        {"subdomain": f"mail.{target}", "domain": target, "ip_addresses": ["198.51.100.2"], "is_active": True},
+    ]
+
+    async with AsyncSessionLocal() as session:
+        await save_recon_result(
+            db=session,
+            domain=target,
+            result_dict={"domain": target, "subdomains": sample_subdomains},
+            duration=1.0,
+            subdomains_count=2,
+            active_subdomains_count=2,
+            tech_detected_count=0,
+            security_score=50,
+            status="completed"
+        )
+
+    # 1. Post import request
+    import_res = client.post(
+        f"/api/recon/{target}/import-to-assets",
+        json={
+            "subdomains": None,
+            "target_status": "active",
+            "default_criticality": "high",
+            "tags": ["recon-test"]
+        }
+    )
+    assert import_res.status_code == 200
+    import_data = import_res.json()
+    assert import_data["domain"] == target
+    assert import_data["imported_count"] == 2
+    assert import_data["skipped_count"] == 0
+    assert len(import_data["asset_ids"]) == 2
+    asset_ids = import_data["asset_ids"]
+
+    try:
+        # 2. Check that assets appear in GET /api/assets
+        list_res = client.get(f"/api/assets?search={target}")
+        assert list_res.status_code == 200
+        found_hosts = [a["hostname"] for a in list_res.json()["items"]]
+        assert f"vpn.{target}" in found_hosts
+        assert f"mail.{target}" in found_hosts
+
+        # 3. Test re-importing (should skip existing)
+        reimport_res = client.post(
+            f"/api/recon/{target}/import-to-assets",
+            json={"subdomains": None}
+        )
+        assert reimport_res.status_code == 200
+        reimport_data = reimport_res.json()
+        assert reimport_data["imported_count"] == 0
+        assert reimport_data["skipped_count"] == 2
+
+        # 4. Test 404 on un-scanned domain
+        missing_res = client.post("/api/recon/non-existent-recon-site.net/import-to-assets", json={})
+        assert missing_res.status_code == 404
+
+    finally:
+        async with AsyncSessionLocal() as session:
+            for aid in asset_ids:
+                await delete_asset(session, aid)
+
+
