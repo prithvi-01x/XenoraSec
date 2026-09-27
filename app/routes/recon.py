@@ -36,11 +36,11 @@ router = APIRouter(prefix="/api/recon", tags=["Passive Reconnaissance & OSINT"])
 def sanitize_domain_input(domain_str: str) -> str:
     """Normalize and validate domain format for passive recon."""
     cleaned = domain_str.strip().lower()
-    # Strip protocols if user pasted a URL
-    cleaned = re.sub(r"^https?://", "", cleaned)
+    # Strip protocols if user pasted a URL (http, https, ftp, etc.)
+    cleaned = re.sub(r"^[a-zA-Z]+://", "", cleaned)
     # Strip paths, ports, query strings
-    cleaned = cleaned.split("/")[0].split(":")[0].strip().rstrip(".")
-    if not cleaned or not re.match(r"^[a-zA-Z0-9_\-\.]+$", cleaned):
+    cleaned = cleaned.split("/")[0].split(":")[0].strip().strip(".")
+    if not cleaned or ".." in cleaned or not re.match(r"^[a-zA-Z0-9_\-\.]+$", cleaned):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid target domain format: '{domain_str}'"
