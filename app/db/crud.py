@@ -7,7 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from typing import Optional, List, Tuple
 from datetime import datetime, UTC, timedelta
 
-from app.db.models import ScanResult, Asset, AssetPort, AssetVulnerability
+from app.db.models import ScanResult, Asset, AssetPort, AssetVulnerability, ReconHistory
 from app.schemas.scan import ScanStatus
 from app.core.logging import get_logger
 from app.core.config import settings
@@ -707,3 +707,95 @@ async def get_asset_statistics(db: AsyncSession) -> dict:
             "asset_type_distribution": {},
             "criticality_distribution": {},
         }
+
+
+# ==================== PASSIVE RECON CRUD ====================
+
+async def save_recon_result(
+    db: AsyncSession,
+    domain: str,
+    result_dict: dict,
+    duration: float,
+    subdomains_count: int,
+    active_subdomains_count: int,
+    tech_detected_count: int,
+    security_score: int,
+    status: str = "completed",
+    error_message: Optional[str] = None
+) -> Optional[ReconHistory]:
+    """
+    Save or update a passive reconnaissance assessment record.
+    """
+    try:
+        record = ReconHistory(
+            domain=domain.lower().strip(),
+            status=status,
+            duration=duration,
+            subdomains_count=subdomains_count,
+            active_subdomains_count=active_subdomains_count,
+            tech_detected_count=tech_detected_count,
+            security_score=security_score,
+            result=result_dict,
+            error_message=error_message,
+        )
+        db.add(record)
+        await db.commit()
+        await db.refresh(record)
+        logger.info(f"Saved recon history record {record.id} for domain {domain}")
+        return record
+    except SQLAlchemyError as e:
+        await db.rollback()
+        logger.error(f"Failed to save recon result for {domain}: {e}")
+        return None
+
+
+async def get_latest_recon_by_domain(
+    db: AsyncSession,
+    domain: str
+) -> Optional[ReconHistory]:
+    """
+    Retrieve the most recent passive reconnaissance result for a domain.
+    """
+    try:
+        stmt = (
+            select(ReconHistory)
+            .where(ReconHistory.domain == domain.lower().strip())
+            .order_by(desc(ReconHistory.created_at))
+            .limit(1)
+        )
+        res = await db.execute(stmt)
+        return res.scalar_one_or_none()
+    except SQLAlchemyError as e:
+        logger.error(f"Failed to get latest recon for {domain}: {e}")
+        return None
+
+
+async def get_recon_history(
+    db: AsyncSession,
+    limit: int = 50,
+    offset: int = 0,
+    domain: Optional[str] = None
+) -> Tuple[List[ReconHistory], int]:
+    """
+    Retrieve paginated recon history records.
+    """
+    try:
+        query = select(ReconHistory)
+        count_query = select(func.count(ReconHistory.id))
+
+        if domain:
+            cleaned = domain.lower().strip().replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+            query = query.where(ReconHistory.domain.like(f"%{cleaned}%", escape='\\'))
+            count_query = count_query.where(ReconHistory.domain.like(f"%{cleaned}%", escape='\\'))
+
+        total_res = await db.execute(count_query)
+        total = total_res.scalar() or 0
+
+        query = query.order_by(desc(ReconHistory.created_at)).limit(limit).offset(offset)
+        result = await db.execute(query)
+        records = result.scalars().all()
+
+        return list(records), total
+    except SQLAlchemyError as e:
+        logger.error(f"Failed to query recon history: {e}")
+        return [], 0
