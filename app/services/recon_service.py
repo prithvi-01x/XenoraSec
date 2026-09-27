@@ -183,3 +183,63 @@ class CrtshClient:
                 continue
         return None
 
+
+class PassiveDnsClient:
+    """
+    Secondary passive DNS intelligence provider querying public passive DNS records
+    (e.g., HackerTarget hostsearch) as a fallback or complementary source to crt.sh.
+    """
+
+    def __init__(self, timeout: float = 8.0):
+        self.timeout = timeout
+        self.headers = {"User-Agent": USER_AGENT}
+
+    async def query_subdomains(self, domain: str) -> List[SubdomainRecord]:
+        """
+        Query passive DNS records for subdomains.
+        Returns normalized SubdomainRecord instances.
+        """
+        clean_domain = domain.lower().strip().lstrip(".")
+        url = f"{HACKERTARGET_URL}?q={clean_domain}"
+
+        try:
+            async with httpx.AsyncClient(headers=self.headers, timeout=self.timeout) as client:
+                resp = await client.get(url)
+                if resp.status_code == 200:
+                    text = resp.text.strip()
+                    # HackerTarget returns 'subdomain,ip\nsubdomain,ip' or error string
+                    if "error" in text.lower() or "no dns records found" in text.lower():
+                        return []
+
+                    records: List[SubdomainRecord] = []
+                    seen: Set[str] = set()
+                    for line in text.splitlines():
+                        parts = line.strip().split(",")
+                        if not parts:
+                            continue
+                        sub = parts[0].strip().lower()
+                        ip = parts[1].strip() if len(parts) > 1 else None
+
+                        if not sub or sub in seen:
+                            continue
+                        if not sub.endswith(f".{clean_domain}") and sub != clean_domain:
+                            continue
+
+                        seen.add(sub)
+                        records.append(
+                            SubdomainRecord(
+                                subdomain=sub,
+                                domain=clean_domain,
+                                source=SubdomainSource.PASSIVE_DNS.value,
+                                ip_addresses=[ip] if ip else [],
+                                is_active=True if ip else None,
+                            )
+                        )
+                    logger.info(f"Passive DNS returned {len(records)} subdomains for {clean_domain}")
+                    return records
+        except Exception as e:
+            logger.warning(f"Passive DNS query failed for {clean_domain}: {e}")
+
+        return []
+
+
