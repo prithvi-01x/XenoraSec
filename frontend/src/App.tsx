@@ -6,6 +6,7 @@ import { HistoryPage } from './pages/HistoryPage';
 import { ScanResultsPage } from './pages/ScanResultsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { AssetInventoryPage } from './pages/AssetInventoryPage';
+import { ReconPage } from './pages/ReconPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -24,6 +25,7 @@ function App() {
         <Layout>
           <Routes>
             <Route path="/" element={<DashboardPage />} />
+            <Route path="/recon" element={<ReconPage />} />
             <Route path="/assets" element={<AssetInventoryPage />} />
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/scan/:scanId" element={<ScanResultsPage />} />
@@ -34,5 +36,6 @@ function App() {
     </QueryClientProvider>
   );
 }
+
 
 export default App;

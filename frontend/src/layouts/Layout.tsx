@@ -10,7 +10,8 @@ import {
     Server, 
     Activity,
     Layers,
-    TerminalSquare
+    TerminalSquare,
+    Radar
 } from 'lucide-react';
 import { useQueueInfo, useHealth } from '../hooks/useApi';
 
@@ -26,10 +27,12 @@ export function Layout({ children }: LayoutProps) {
 
     const navItems = [
         { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
+        { path: '/recon', icon: Radar, label: 'Passive Recon' },
         { path: '/assets', icon: Server, label: 'Asset Inventory' },
         { path: '/history', icon: History, label: 'Scan Audit Log' },
         { path: '/settings', icon: Settings, label: 'Engine & System' },
     ];
+
 
     const renderNavContent = (isMobile = false) => (
         <>
