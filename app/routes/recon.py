@@ -153,3 +153,59 @@ async def get_domain_recon_endpoint(
             detail="Failed to deserialize stored reconnaissance result"
         )
 
+
+@router.post(
+    "/{domain}/import-to-assets",
+    response_model=SubdomainImportResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "Recon findings not found"},
+        500: {"model": ErrorResponse, "description": "Database import failed"},
+    },
+)
+async def import_subdomains_to_assets_endpoint(
+    domain: str,
+    payload: SubdomainImportRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Import discovered passive subdomains directly into XenoraSec's persistent Asset Inventory.
+    Enables immediate attack surface tracking and security audit scheduling.
+    """
+    cleaned = sanitize_domain_input(domain)
+    record = await get_latest_recon_by_domain(db, cleaned)
+
+    if not record or not record.result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No passive reconnaissance findings found for '{cleaned}'. Run a recon scan first."
+        )
+
+    subdomain_records = record.result.get("subdomains", [])
+    if not subdomain_records:
+        return SubdomainImportResponse(
+            domain=cleaned,
+            imported_count=0,
+            skipped_count=0,
+            asset_ids=[],
+            message=f"No subdomains discovered in latest recon run for '{cleaned}'."
+        )
+
+    imported, skipped, asset_ids = await import_recon_subdomains_to_assets(
+        db=db,
+        domain=cleaned,
+        subdomain_records=subdomain_records,
+        selected_subdomains=payload.subdomains,
+        target_status=payload.target_status,
+        default_criticality=payload.default_criticality,
+        tags=payload.tags,
+    )
+
+    return SubdomainImportResponse(
+        domain=cleaned,
+        imported_count=imported,
+        skipped_count=skipped,
+        asset_ids=asset_ids,
+        message=f"Successfully imported {imported} subdomains into Asset Inventory (skipped {skipped} existing)."
+    )
+
+
