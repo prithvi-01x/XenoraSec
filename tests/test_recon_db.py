@@ -1,19 +1,23 @@
 # tests/test_recon_db.py
 
 import pytest
+from uuid import uuid4
 from app.db.database import AsyncSessionLocal
 from app.db.crud import (
     save_recon_result,
     get_latest_recon_by_domain,
     get_recon_history,
+    import_recon_subdomains_to_assets,
+    delete_asset,
 )
 
 
 @pytest.mark.asyncio
 async def test_recon_history_save_and_retrieve():
     """Verify storing and retrieving passive recon assessment history."""
+    unique_tag = uuid4().hex[:8]
+    domain = f"osint-test-{unique_tag}.org"
     async with AsyncSessionLocal() as session:
-        domain = "osint-test-example.org"
         sample_result = {
             "domain": domain,
             "subdomains": [
@@ -59,7 +63,7 @@ async def test_recon_history_save_and_retrieve():
         assert latest.domain == domain
 
         # 3. Query paginated recon history
-        history, total = await get_recon_history(session, limit=10, domain="osint-test")
+        history, total = await get_recon_history(session, limit=10, domain=unique_tag)
         assert total >= 1
         assert any(item.domain == domain for item in history)
 
@@ -67,73 +71,84 @@ async def test_recon_history_save_and_retrieve():
 @pytest.mark.asyncio
 async def test_import_recon_subdomains_to_asset_inventory():
     """Verify importing discovered subdomains into the Asset Inventory database."""
-    from app.db.crud import import_recon_subdomains_to_assets, get_asset_by_id
     from app.db.models import Asset
     from sqlalchemy import select
 
-    async with AsyncSessionLocal() as session:
-        domain = "import-osint.corp"
-        subdomain_records = [
-            {
-                "subdomain": f"auth.{domain}",
-                "ip_addresses": ["104.21.50.1"],
-                "source": "crtsh",
-                "is_active": True
-            },
-            {
-                "subdomain": f"vpn.{domain}",
-                "ip_addresses": ["104.21.50.2"],
-                "source": "crtsh",
-                "is_active": True
-            },
-            {
-                "subdomain": f"dev.{domain}",
-                "ip_addresses": ["104.21.50.3"],
-                "source": "passive_dns",
-                "is_active": False
-            },
-        ]
+    unique_tag = uuid4().hex[:8]
+    domain = f"import-osint-{unique_tag}.corp"
+    created_asset_ids = []
 
-        # 1. Bulk import all subdomains
-        imported, skipped, asset_ids = await import_recon_subdomains_to_assets(
-            db=session,
-            domain=domain,
-            subdomain_records=subdomain_records,
-            selected_subdomains=None,
-            target_status="active",
-            default_criticality="high",
-            tags=["recon-tag1"]
-        )
+    try:
+        async with AsyncSessionLocal() as session:
+            subdomain_records = [
+                {
+                    "subdomain": f"auth.{domain}",
+                    "ip_addresses": ["104.21.50.1"],
+                    "source": "crtsh",
+                    "is_active": True
+                },
+                {
+                    "subdomain": f"vpn.{domain}",
+                    "ip_addresses": ["104.21.50.2"],
+                    "source": "crtsh",
+                    "is_active": True
+                },
+                {
+                    "subdomain": f"dev.{domain}",
+                    "ip_addresses": ["104.21.50.3"],
+                    "source": "passive_dns",
+                    "is_active": False
+                },
+            ]
 
-        assert imported == 3
-        assert skipped == 0
-        assert len(asset_ids) == 3
+            # 1. Bulk import all subdomains
+            imported, skipped, asset_ids = await import_recon_subdomains_to_assets(
+                db=session,
+                domain=domain,
+                subdomain_records=subdomain_records,
+                selected_subdomains=None,
+                target_status="active",
+                default_criticality="high",
+                tags=["recon-tag1"]
+            )
 
-        # Verify created asset attributes
-        stmt = select(Asset).where(Asset.hostname == f"auth.{domain}")
-        res = await session.execute(stmt)
-        auth_asset = res.scalar_one_or_none()
-        assert auth_asset is not None
-        assert auth_asset.ip_address == "104.21.50.1"
-        assert auth_asset.asset_type == "domain"
-        assert auth_asset.criticality == "high"
-        assert "recon-discovered" in auth_asset.tags
-        assert "recon-tag1" in auth_asset.tags
+            assert imported == 3
+            assert skipped == 0
+            assert len(asset_ids) == 3
+            created_asset_ids = asset_ids
 
-        # 2. Re-importing should skip existing and merge tags
-        imported_again, skipped_again, asset_ids_again = await import_recon_subdomains_to_assets(
-            db=session,
-            domain=domain,
-            subdomain_records=subdomain_records,
-            selected_subdomains=[f"auth.{domain}"],
-            tags=["recon-tag2"]
-        )
-        assert imported_again == 0
-        assert skipped_again == 1
-        assert auth_asset.id in asset_ids_again
+            # Verify created asset attributes
+            stmt = select(Asset).where(Asset.hostname == f"auth.{domain}")
+            res = await session.execute(stmt)
+            auth_asset = res.scalar_one_or_none()
+            assert auth_asset is not None
+            assert auth_asset.ip_address == "104.21.50.1"
+            assert auth_asset.asset_type == "domain"
+            assert auth_asset.criticality == "high"
+            assert "recon-discovered" in auth_asset.tags
+            assert "recon-tag1" in auth_asset.tags
 
-        # Check tag merge
-        res = await session.execute(stmt)
-        auth_asset_updated = res.scalar_one_or_none()
-        assert "recon-tag2" in auth_asset_updated.tags
+            # 2. Re-importing should skip existing and merge tags
+            imported_again, skipped_again, asset_ids_again = await import_recon_subdomains_to_assets(
+                db=session,
+                domain=domain,
+                subdomain_records=subdomain_records,
+                selected_subdomains=[f"auth.{domain}"],
+                tags=["recon-tag2"]
+            )
+            assert imported_again == 0
+            assert skipped_again == 1
+            assert auth_asset.id in asset_ids_again
+
+            # Check tag merge
+            res = await session.execute(stmt)
+            auth_asset_updated = res.scalar_one_or_none()
+            assert "recon-tag2" in auth_asset_updated.tags
+
+    finally:
+        if created_asset_ids:
+            async with AsyncSessionLocal() as session:
+                for aid in created_asset_ids:
+                    await delete_asset(session, aid)
+
 
