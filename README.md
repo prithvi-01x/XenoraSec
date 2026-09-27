@@ -273,6 +273,25 @@ flowchart TD
 - **Resilient DNS-over-HTTPS (DoH)**: Leverages dnspython with Cloudflare DoH (`https://cloudflare-dns.com/dns-query`) fallback, guaranteeing record resolution even in restricted container environments where egress UDP port 53 is blocked.
 - **Persistent Tactical Intelligence**: Results are serialized into strongly-typed Pydantic schemas (`app/schemas/recon.py`) and recorded in the database `recon_history` table for historical delta analysis and rapid one-click export into the Asset Inventory.
 
+### 3. Passive Subdomain Discovery & crt.sh Pipeline
+
+Modern organizations deploy services across hundreds of ephemeral subdomains that are invisible to traditional dictionary brute-force attacks. XenoraSec leverages cryptographic Certificate Transparency logs to discover the true, unredacted attack perimeter:
+
+- **Certificate Transparency (CT) Log Mining**:
+  - Connects to public Certificate Transparency logs via the crt.sh REST API (`https://crt.sh/?q=%.{domain}&output=json`).
+  - Utilizes exponential backoff with randomized jitter to handle sporadic upstream load shedding and rate limits without failing the user's recon request.
+- **SAN & Wildcard Normalization Engine**:
+  - Extracts both `common_name` and multi-line `name_value` Subject Alternative Name (SAN) fields.
+  - Strips leading wildcards (`*.internal.example.com` $\to$ `internal.example.com`), URI schemes (`https://`), trailing slashes, and port specifications.
+  - Enforces strict target-domain boundary filtering, discarding unrelated domain certificates that frequently share multi-tenant SAN entries.
+  - De-duplicates hostnames while annotating their verified discovery sources (`crt.sh`, `passive_dns`).
+- **Passive DNS Fallback Provider**:
+  - When crt.sh experiences downtime, timeouts, or transient 502 Bad Gateway responses, the engine automatically falls back to secondary passive DNS queries (HackerTarget / Cloudflare DoH historical name records).
+- **Asynchronous DNS Resolution & IP Mapping**:
+  - If `resolve_subdomains` is enabled, an asynchronous worker pool leverages `dnspython` to query A and AAAA records across all discovered subdomains concurrently.
+  - Maps live IPv4/IPv6 addresses to each subdomain record.
+  - Accurately tracks resolution status (`is_resolvable: true/false`), allowing analysts to immediately distinguish active infrastructure from dead DNS tombstones or stale CNAME takeover candidates.
+
 ---
 
 ## 🏢 Asset Inventory & Attack Surface Management
