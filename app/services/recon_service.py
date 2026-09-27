@@ -786,6 +786,55 @@ class PassiveTechFingerprinter:
         return None
 
 
+    def analyze_cookies(self, cookie_names: List[str]) -> List[TechStackItem]:
+        """Infer backend technologies from cookie and session names."""
+        detected: List[TechStackItem] = []
+        c_set = {c.lower() for c in cookie_names}
+
+        # PHP
+        if any("phpsessid" in c for c in c_set):
+            detected.append(TechStackItem(name="PHP", category="programming_language", confidence=95, match_evidence="Cookie: PHPSESSID detected"))
+
+        # Java (Tomcat / Spring)
+        if any("jsessionid" in c for c in c_set):
+            detected.append(TechStackItem(name="Java / Spring / Tomcat", category="framework", confidence=95, match_evidence="Cookie: JSESSIONID detected"))
+
+        # Django
+        if "csrftoken" in c_set or "sessionid" in c_set:
+            detected.append(TechStackItem(name="Django", category="framework", confidence=90, match_evidence="Cookie: Django csrftoken/sessionid detected"))
+
+        # Laravel
+        if any("laravel" in c or "xsrf-token" in c for c in c_set):
+            detected.append(TechStackItem(name="Laravel", category="framework", confidence=90, match_evidence="Cookie: Laravel session or XSRF-TOKEN detected"))
+
+        # Node / Express
+        if "connect.sid" in c_set:
+            detected.append(TechStackItem(name="Express.js", category="framework", confidence=95, match_evidence="Cookie: connect.sid detected"))
+
+        # ASP.NET / .NET Core
+        if any("asp.net" in c or "aspnet" in c or "antiforgery" in c for c in c_set):
+            detected.append(TechStackItem(name="ASP.NET / .NET Core", category="framework", confidence=95, match_evidence="Cookie: ASP.NET session or antiforgery detected"))
+
+        # WordPress
+        if any("wordpress" in c or "wp-settings" in c for c in c_set):
+            detected.append(TechStackItem(name="WordPress", category="cms", confidence=100, match_evidence="Cookie: wp-settings or wordpress session detected"))
+
+        # Cloudflare
+        if any("cf_clearance" in c or "__cf_bm" in c for c in c_set):
+            detected.append(TechStackItem(name="Cloudflare Bot Management", category="cdn_waf", confidence=100, match_evidence="Cookie: __cf_bm / cf_clearance detected"))
+
+        # AWS ALB
+        if any("awsalb" in c for c in c_set):
+            detected.append(TechStackItem(name="AWS ALB", category="cdn_waf", confidence=100, match_evidence="Cookie: AWSALB detected"))
+
+        # Ruby on Rails
+        if any("_rails_session" in c or "_session_id" in c for c in c_set):
+            detected.append(TechStackItem(name="Ruby on Rails", category="framework", confidence=85, match_evidence="Cookie: Rails session cookie detected"))
+
+        return detected
+
+
+
 
 
 
