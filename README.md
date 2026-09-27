@@ -292,6 +292,59 @@ Modern organizations deploy services across hundreds of ephemeral subdomains tha
   - Maps live IPv4/IPv6 addresses to each subdomain record.
   - Accurately tracks resolution status (`is_resolvable: true/false`), allowing analysts to immediately distinguish active infrastructure from dead DNS tombstones or stale CNAME takeover candidates.
 
+### 4. DNS Topology & Mail Security Posture Analysis
+
+DNS records define the routing backbone, hosting infrastructure, and email authenticity of a target organization. XenoraSec's `DNSResolver` performs automated multi-record extraction and email spoofing risk calculation:
+
+| Record Type | Assessment Focus | Security Significance |
+| :--- | :--- | :--- |
+| **A / AAAA** | Direct host IP resolution (IPv4 & IPv6) | Uncovers dual-stack exposure and Origin IP addresses behind CDNs |
+| **CNAME** | Canonical name routing & CDN aliases | Pinpoints dangling CNAME records vulnerable to Subdomain Takeover |
+| **MX** | Mail Exchanger priority and gateways | Identifies mail providers (Google Workspace, Microsoft 365, Proofpoint) |
+| **TXT** | Verification tokens & security policies | Discloses domain ownership, site-verification tokens, SPF/DMARC policies |
+| **NS** | Authoritative Nameservers | Reveals DNS providers (Cloudflare, Route53, Akamai) and glue records |
+| **SOA** | Start of Authority parameters | Zone refresh, retry timers, and primary authoritative contact |
+| **PTR** | Reverse DNS mapping | Correlates IP addresses back to canonical cloud hostnames |
+
+#### 📬 SPF & DMARC Spoofing Risk Evaluator
+Email spoofing remains a primary attack vector in initial access and CEO fraud. The engine inspects published TXT and `_dmarc.{domain}` records to calculate a deterministic email security score:
+- **SPF Evaluation**: Checks for valid `v=spf1` syntax, expands mechanisms (`include:`, `ip4:`, `redirect=`), and evaluates all-mechanisms (`-all` hardfail is compliant; `~all` softfail yields a warning; `?all` neutral or `+all` pass triggers severe spoofing risk).
+- **DMARC Evaluation**: Locates DMARC records, inspects policy enforcement directives (`p=reject` enforces strict rejection; `p=quarantine` isolates unauthenticated mail; `p=none` flags monitoring mode with zero spoofing protection), and checks forensic reporting tags (`rua=`, `ruf=`).
+- **Composite Mail Security Metric**: Generates a unified 0–100 score and risk classification (`low`, `medium`, `high`) directly in the UI.
+
+---
+
+### 5. Passive Tech Stack Fingerprinting & Security Headers Matrix
+
+XenoraSec reconstructs the remote application architecture using non-intrusive heuristics, examining response metadata without sending aggressive fuzzing payloads:
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│                   Passive Fingerprint Ingestion Engine                  │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+       ┌────────────────────────────┼────────────────────────────┐
+       ▼                            ▼                            ▼
+┌──────────────┐             ┌──────────────┐             ┌──────────────┐
+│Server Headers│             │Cookie Schemes│             │HTML & Script │
+│ - Nginx      │             │ - PHPSESSID  │             │ - Next.js    │
+│ - Apache     │             │ - laravel    │             │ - WordPress  │
+│ - Cloudflare │             │ - csrftoken  │             │ - React/Vue  │
+│ - Envoy/K8s  │             │ - ASP.NET_   │             │ - Tailwind   │
+└──────────────┘             └──────────────┘             └──────────────┘
+```
+
+- **Server Tokens & Infrastructure Headers**: Parses `Server`, `X-Powered-By`, `X-AspNet-Version`, `Via`, and `X-Generator` tokens with confidence weights.
+- **Session & Framework Cookie Heuristics**: Detects frameworks by signature cookies (`PHPSESSID` $\to$ PHP, `laravel_session` $\to$ Laravel, `csrftoken` / `sessionid` $\to$ Django, `connect.sid` $\to$ Express/Node.js, `ASP.NET_SessionId` $\to$ ASP.NET, `JSESSIONID` $\to$ Java/Spring, `session` $\to$ Flask/Python).
+- **DOM Signatures & CMS Markers**: Inspects HTML `<meta name="generator">` tags, script paths (`/wp-content/`, `/sites/default/`, `/_next/static/`), and framework markers (`data-reactroot`, `__vue_app__`).
+- **Defensive Security Headers Score**: Evaluates 6 vital defensive headers:
+  1. `Strict-Transport-Security` (HSTS & max-age duration)
+  2. `Content-Security-Policy` (CSP presence & default-src restrictions)
+  3. `X-Frame-Options` (Clickjacking defense: DENY / SAMEORIGIN)
+  4. `X-Content-Type-Options` (MIME sniffing prevention: nosniff)
+  5. `Referrer-Policy` (Information leakage mitigation)
+  6. `Permissions-Policy` (Browser API restriction)
+
 ---
 
 ## 🏢 Asset Inventory & Attack Surface Management
