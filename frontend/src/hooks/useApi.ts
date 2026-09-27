@@ -1,11 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { scanApi, dashboardApi, healthApi, batchScanApi, assetApi } from '../api/client';
+import { scanApi, dashboardApi, healthApi, batchScanApi, assetApi, reconApi } from '../api/client';
 import type { 
     ScanCreateRequest, 
     ReportFormat, 
     ReportType, 
     BatchScanCreateRequest, 
-    AssetUpdateRequest 
+    AssetUpdateRequest,
+    ReconRequest,
+    SubdomainImportRequest
 } from '../types/api';
 
 // Query keys
@@ -21,7 +23,10 @@ export const queryKeys = {
     assets: (params?: Record<string, unknown>) => ['assets', 'list', params] as const,
     assetStats: () => ['assets', 'stats'] as const,
     assetDetail: (assetId: number) => ['assets', 'detail', assetId] as const,
+    reconResult: (domain: string) => ['recon', 'result', domain] as const,
+    reconHistory: (params?: Record<string, unknown>) => ['recon', 'history', params] as const,
 };
+
 
 // Scan results query — auto-polls every 3s while scan is running, stops when done
 export function useScanResults(scanId: string) {
@@ -293,4 +298,53 @@ export function useScanAsset() {
         },
     });
 }
+
+// ==================== PASSIVE RECONNAISSANCE & OSINT HOOKS ====================
+
+// Query latest recon assessment for domain
+export function useReconResult(domain: string | null) {
+    return useQuery({
+        queryKey: queryKeys.reconResult(domain || ''),
+        queryFn: () => (domain ? reconApi.getReconResult(domain) : null),
+        enabled: !!domain,
+    });
+}
+
+// Query historical recon assessments
+export function useReconHistory(params?: {
+    limit?: number;
+    offset?: number;
+    domain?: string;
+}) {
+    return useQuery({
+        queryKey: queryKeys.reconHistory(params),
+        queryFn: () => reconApi.getReconHistory(params),
+    });
+}
+
+// Start on-demand passive recon assessment
+export function useStartRecon() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (data: ReconRequest) => reconApi.startRecon(data),
+        onSuccess: (_data, variables) => {
+            queryClient.invalidateQueries({ queryKey: queryKeys.reconResult(variables.domain) });
+            queryClient.invalidateQueries({ queryKey: ['recon', 'history'] });
+        },
+    });
+}
+
+// Bulk import discovered subdomains into Asset Inventory
+export function useImportSubdomains() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: ({ domain, data }: { domain: string; data: SubdomainImportRequest }) =>
+            reconApi.importSubdomains(domain, data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['assets'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.assetStats() });
+        },
+    });
+}
+
 
