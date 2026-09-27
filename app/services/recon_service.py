@@ -833,6 +833,89 @@ class PassiveTechFingerprinter:
 
         return detected
 
+    def analyze_html(self, html: str) -> Tuple[Optional[str], List[TechStackItem]]:
+        """
+        Analyze HTML response body for meta generators, DOM markers,
+        client-side framework patterns, and page title.
+        """
+        detected: List[TechStackItem] = []
+        if not html:
+            return None, []
+
+        lower_html = html.lower()
+
+        # 1. Extract page title
+        title = None
+        title_match = re.search(r"<title[^>]*>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
+        if title_match:
+            title = title_match.group(1).strip()
+            # Clean up entities and extra whitespace
+            title = re.sub(r"\s+", " ", title)[:150]
+
+        # 2. Meta Generator
+        meta_gen_match = re.search(r'<meta[^>]+name=["\']generator["\'][^>]+content=["\']([^"\']+)["\']', html, re.IGNORECASE)
+        if not meta_gen_match:
+            meta_gen_match = re.search(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']generator["\']', html, re.IGNORECASE)
+
+        if meta_gen_match:
+            gen_val = meta_gen_match.group(1).strip()
+            gen_lower = gen_val.lower()
+
+            if "wordpress" in gen_lower:
+                version = self._extract_version(gen_val, "wordpress")
+                detected.append(TechStackItem(name="WordPress", category="cms", version=version, confidence=100, match_evidence=f"Meta generator: {gen_val}"))
+            elif "drupal" in gen_lower:
+                version = self._extract_version(gen_val, "drupal")
+                detected.append(TechStackItem(name="Drupal", category="cms", version=version, confidence=100, match_evidence=f"Meta generator: {gen_val}"))
+            elif "joomla" in gen_lower:
+                version = self._extract_version(gen_val, "joomla")
+                detected.append(TechStackItem(name="Joomla", category="cms", version=version, confidence=100, match_evidence=f"Meta generator: {gen_val}"))
+            elif "ghost" in gen_lower:
+                version = self._extract_version(gen_val, "ghost")
+                detected.append(TechStackItem(name="Ghost", category="cms", version=version, confidence=100, match_evidence=f"Meta generator: {gen_val}"))
+            elif "gatsby" in gen_lower:
+                detected.append(TechStackItem(name="Gatsby", category="framework", confidence=100, match_evidence=f"Meta generator: {gen_val}"))
+            elif "hugo" in gen_lower:
+                detected.append(TechStackItem(name="Hugo", category="cms", confidence=100, match_evidence=f"Meta generator: {gen_val}"))
+            elif "shopify" in gen_lower:
+                detected.append(TechStackItem(name="Shopify", category="cms", confidence=100, match_evidence=f"Meta generator: {gen_val}"))
+            else:
+                detected.append(TechStackItem(name=gen_val, category="cms", confidence=80, match_evidence=f"Meta generator: {gen_val}"))
+
+        # 3. Next.js markers
+        if "_next/static" in lower_html or "__next_data__" in lower_html or 'id="__next"' in lower_html:
+            detected.append(TechStackItem(name="Next.js", category="framework", confidence=100, match_evidence="HTML pattern: _next/static or __NEXT_DATA__"))
+            detected.append(TechStackItem(name="React", category="ui_library", confidence=100, match_evidence="Inferred from Next.js dependency"))
+
+        # 4. React markers
+        elif "react" in lower_html and ("data-reactroot" in lower_html or "react-dom" in lower_html or "_reactFiber" in html):
+            detected.append(TechStackItem(name="React", category="ui_library", confidence=95, match_evidence="HTML pattern: data-reactroot / react-dom"))
+
+        # 5. Vue.js markers
+        if "data-v-" in lower_html or "vue.js" in lower_html or "__vue__" in html:
+            detected.append(TechStackItem(name="Vue.js", category="framework", confidence=95, match_evidence="HTML pattern: data-v- scope attribute"))
+
+        # 6. Angular markers
+        if "ng-version" in lower_html or "ng-app" in lower_html:
+            ng_v_match = re.search(r'ng-version=["\']([^"\']+)["\']', html)
+            v = ng_v_match.group(1) if ng_v_match else None
+            detected.append(TechStackItem(name="Angular", category="framework", version=v, confidence=100, match_evidence="HTML pattern: ng-version attribute"))
+
+        # 7. WordPress path markers
+        if "/wp-content/" in lower_html or "/wp-includes/" in lower_html:
+            if not any(d.name == "WordPress" for d in detected):
+                detected.append(TechStackItem(name="WordPress", category="cms", confidence=95, match_evidence="HTML pattern: /wp-content/ asset path"))
+
+        # 8. CSS Frameworks: Tailwind and Bootstrap
+        if "cdn.tailwindcss.com" in lower_html or "tailwindcss" in lower_html:
+            detected.append(TechStackItem(name="Tailwind CSS", category="ui_library", confidence=95, match_evidence="HTML pattern: Tailwind CSS stylesheet reference"))
+
+        if "bootstrap.min.css" in lower_html or "bootstrap.bundle" in lower_html:
+            detected.append(TechStackItem(name="Bootstrap", category="ui_library", confidence=95, match_evidence="HTML pattern: Bootstrap CSS/JS bundle"))
+
+        return title, detected
+
+
 
 
 
