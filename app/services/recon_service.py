@@ -243,3 +243,63 @@ class PassiveDnsClient:
         return []
 
 
+class SubdomainResolver:
+    """
+    Asynchronous DNS resolution filter that verifies whether discovered subdomains
+    are actively routable and resolves their IPv4 and IPv6 network endpoints.
+    """
+
+    def __init__(self, concurrency: int = 25, timeout: float = 4.0):
+        self.semaphore = asyncio.Semaphore(concurrency)
+        self.timeout = timeout
+
+    async def resolve_records(self, records: List[SubdomainRecord]) -> List[SubdomainRecord]:
+        """
+        Concurrently probe DNS resolution for a list of SubdomainRecord items.
+        Updates is_active flag and ip_addresses in-place.
+        """
+        tasks = [self._resolve_single(record) for record in records]
+        updated_records = await asyncio.gather(*tasks, return_exceptions=False)
+
+        # Sort: Active subdomains first, then alphabetically
+        updated_records.sort(key=lambda r: (not (r.is_active is True), r.subdomain))
+        return updated_records
+
+    async def _resolve_single(self, record: SubdomainRecord) -> SubdomainRecord:
+        """Resolve a single hostname to IP addresses with timeout."""
+        async with self.semaphore:
+            loop = asyncio.get_running_loop()
+            try:
+                # Run getaddrinfo in default threadpool to avoid blocking event loop
+                addr_info = await asyncio.wait_for(
+                    loop.getaddrinfo(
+                        record.subdomain,
+                        None,
+                        family=socket.AF_UNSPEC,
+                        type=socket.SOCK_STREAM
+                    ),
+                    timeout=self.timeout
+                )
+                ips: Set[str] = set()
+                for item in addr_info:
+                    sockaddr = item[4]
+                    if sockaddr and len(sockaddr) > 0:
+                        ip = sockaddr[0]
+                        ips.add(ip)
+
+                if ips:
+                    record.ip_addresses = sorted(list(ips))
+                    record.is_active = True
+                else:
+                    record.is_active = False
+
+            except (socket.gaierror, TimeoutError, asyncio.TimeoutError):
+                record.is_active = False
+            except Exception as e:
+                logger.debug(f"Resolution error for {record.subdomain}: {e}")
+                record.is_active = False
+
+            return record
+
+
+
