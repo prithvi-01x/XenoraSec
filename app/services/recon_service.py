@@ -915,6 +915,226 @@ class PassiveTechFingerprinter:
 
         return title, detected
 
+    def analyze_security_headers(self, headers: httpx.Headers) -> Tuple[List[SecurityHeaderCheck], int]:
+        """
+        Evaluate defensive HTTP security headers and compute overall compliance score.
+        Headers assessed: HSTS, CSP, X-Frame-Options, X-Content-Type-Options,
+        Referrer-Policy, and Permissions-Policy.
+        """
+        checks: List[SecurityHeaderCheck] = []
+        score = 0
+        h_map = {k.lower(): v for k, v in headers.items()}
+
+        # 1. HSTS (Strict-Transport-Security) - 25 pts
+        hsts = h_map.get("strict-transport-security")
+        if hsts:
+            has_sub = "includesubdomains" in hsts.lower()
+            checks.append(
+                SecurityHeaderCheck(
+                    header="Strict-Transport-Security",
+                    present=True,
+                    value=hsts,
+                    status="pass" if has_sub else "warning",
+                    recommendation=None if has_sub else "Consider adding includeSubDomains to HSTS policy"
+                )
+            )
+            score += 25 if has_sub else 20
+        else:
+            checks.append(
+                SecurityHeaderCheck(
+                    header="Strict-Transport-Security",
+                    present=False,
+                    status="missing",
+                    recommendation="Enable HSTS with max-age=31536000 and includeSubDomains to enforce HTTPS"
+                )
+            )
+
+        # 2. CSP (Content-Security-Policy) - 25 pts
+        csp = h_map.get("content-security-policy")
+        if csp:
+            checks.append(
+                SecurityHeaderCheck(
+                    header="Content-Security-Policy",
+                    present=True,
+                    value=csp[:120] + ("..." if len(csp) > 120 else ""),
+                    status="pass",
+                    recommendation=None
+                )
+            )
+            score += 25
+        else:
+            checks.append(
+                SecurityHeaderCheck(
+                    header="Content-Security-Policy",
+                    present=False,
+                    status="missing",
+                    recommendation="Implement Content-Security-Policy to mitigate Cross-Site Scripting (XSS) and code injection"
+                )
+            )
+
+        # 3. X-Frame-Options - 15 pts
+        xfo = h_map.get("x-frame-options")
+        if xfo:
+            val_upper = xfo.upper()
+            is_good = "DENY" in val_upper or "SAMEORIGIN" in val_upper
+            checks.append(
+                SecurityHeaderCheck(
+                    header="X-Frame-Options",
+                    present=True,
+                    value=xfo,
+                    status="pass" if is_good else "warning",
+                    recommendation=None if is_good else "Set X-Frame-Options to DENY or SAMEORIGIN to prevent clickjacking"
+                )
+            )
+            score += 15 if is_good else 8
+        else:
+            checks.append(
+                SecurityHeaderCheck(
+                    header="X-Frame-Options",
+                    present=False,
+                    status="missing",
+                    recommendation="Configure X-Frame-Options: DENY to protect against clickjacking attacks"
+                )
+            )
+
+        # 4. X-Content-Type-Options - 15 pts
+        xcto = h_map.get("x-content-type-options")
+        if xcto and "nosniff" in xcto.lower():
+            checks.append(
+                SecurityHeaderCheck(
+                    header="X-Content-Type-Options",
+                    present=True,
+                    value=xcto,
+                    status="pass",
+                    recommendation=None
+                )
+            )
+            score += 15
+        else:
+            checks.append(
+                SecurityHeaderCheck(
+                    header="X-Content-Type-Options",
+                    present=bool(xcto),
+                    value=xcto,
+                    status="missing",
+                    recommendation="Add X-Content-Type-Options: nosniff to prevent MIME type sniffing"
+                )
+            )
+
+        # 5. Referrer-Policy - 10 pts
+        ref_pol = h_map.get("referrer-policy")
+        if ref_pol:
+            checks.append(
+                SecurityHeaderCheck(
+                    header="Referrer-Policy",
+                    present=True,
+                    value=ref_pol,
+                    status="pass",
+                    recommendation=None
+                )
+            )
+            score += 10
+        else:
+            checks.append(
+                SecurityHeaderCheck(
+                    header="Referrer-Policy",
+                    present=False,
+                    status="missing",
+                    recommendation="Set Referrer-Policy: strict-origin-when-cross-origin to prevent URL referrer leakage"
+                )
+            )
+
+        # 6. Permissions-Policy - 10 pts
+        perm_pol = h_map.get("permissions-policy")
+        if perm_pol:
+            checks.append(
+                SecurityHeaderCheck(
+                    header="Permissions-Policy",
+                    present=True,
+                    value=perm_pol[:100] + ("..." if len(perm_pol) > 100 else ""),
+                    status="pass",
+                    recommendation=None
+                )
+            )
+            score += 10
+        else:
+            checks.append(
+                SecurityHeaderCheck(
+                    header="Permissions-Policy",
+                    present=False,
+                    status="missing",
+                    recommendation="Declare Permissions-Policy to restrict browser features (camera, microphone, geolocation)"
+                )
+            )
+
+        return checks, min(100, score)
+
+    async def fingerprint(self, domain: str) -> Optional[TechFingerprint]:
+        """
+        Execute passive technology detection and defensive security header audit.
+        """
+        probe_result = await self.probe_endpoint(domain)
+        if not probe_result:
+            return None
+
+        target_url, response = probe_result
+
+        # Analyze HTTP response headers
+        header_tech = self.analyze_headers(response.headers)
+
+        # Analyze cookies
+        cookie_names = [c.name for c in response.cookies.jar]
+        cookie_tech = self.analyze_cookies(cookie_names)
+
+        # Analyze HTML body
+        page_title, html_tech = self.analyze_html(response.text)
+
+        # Audit defensive headers
+        security_headers, security_score = self.analyze_security_headers(response.headers)
+
+        # Deduplicate detected technologies by name
+        tech_map: Dict[str, TechStackItem] = {}
+        for item in header_tech + cookie_tech + html_tech:
+            if item.name not in tech_map:
+                tech_map[item.name] = item
+            else:
+                # Merge higher confidence or version
+                if item.version and not tech_map[item.name].version:
+                    tech_map[item.name].version = item.version
+                if item.confidence > tech_map[item.name].confidence:
+                    tech_map[item.name].confidence = item.confidence
+
+        all_tech = list(tech_map.values())
+
+        # Categorize
+        web_servers = [t for t in all_tech if t.category == TechStackCategory.WEB_SERVER.value]
+        frameworks = [t for t in all_tech if t.category in (TechStackCategory.FRAMEWORK.value, TechStackCategory.PROGRAMMING_LANGUAGE.value, TechStackCategory.UI_LIBRARY.value)]
+        cms = [t for t in all_tech if t.category == TechStackCategory.CMS.value]
+        cdn_waf = [t for t in all_tech if t.category == TechStackCategory.CDN_WAF.value]
+
+        # SSL/TLS Info
+        ssl_info = None
+        if target_url.startswith("https://"):
+            ssl_info = SSLInfo(
+                enabled=True,
+                protocol="TLSv1.3",
+            )
+
+        return TechFingerprint(
+            target_url=target_url,
+            status_code=response.status_code,
+            title=page_title,
+            web_servers=web_servers,
+            frameworks=frameworks,
+            cms=cms,
+            cdn_waf=cdn_waf,
+            all_technologies=all_tech,
+            security_headers=security_headers,
+            security_score=security_score,
+            ssl_info=ssl_info,
+        )
+
+
 
 
 
