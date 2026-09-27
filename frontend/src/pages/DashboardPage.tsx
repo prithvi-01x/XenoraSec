@@ -10,7 +10,9 @@ import {
     Clock, 
     ExternalLink, 
     ChevronRight,
-    Flame
+    Flame,
+    Globe,
+    ArrowRight
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { StatusBadge } from '../components/StatusBadge';
@@ -179,6 +181,56 @@ export function DashboardPage() {
                     <div className="pt-3 border-t border-surface-border text-[10px] text-slate-400 font-mono mt-3 flex items-center justify-between">
                         <span>Database: scans.db</span>
                         <span className="text-blue-400">Nuclei v3 Engine</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Passive Recon & OSINT Banner / Shortcut */}
+            <div className="card bg-gradient-to-r from-blue-950/30 via-surface to-cyan-950/20 border-cyan-800/40 p-4 relative overflow-hidden">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center shrink-0">
+                            <Globe className="w-5 h-5 text-cyan-400" />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-white">
+                                    Passive OSINT &amp; Attack Surface Recon
+                                </h3>
+                                <span className="badge badge-info text-[9px]">OSINT v1</span>
+                            </div>
+                            <p className="text-xs text-slate-400 mt-1 max-w-2xl">
+                                Uncover shadow infrastructure via Certificate Transparency (crt.sh), audit full DNS topology &amp; mail security (SPF/DMARC), and fingerprint tech stacks without sending active attack traffic.
+                            </p>
+                            <div className="flex flex-wrap items-center gap-4 mt-2.5 text-[11px] font-mono text-slate-400">
+                                <span className="flex items-center gap-1.5 text-cyan-300">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                                    CT Log Mining
+                                </span>
+                                <span className="flex items-center gap-1.5 text-blue-300">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                                    DNS &amp; MX Hygiene
+                                </span>
+                                <span className="flex items-center gap-1.5 text-emerald-300">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                    Tech Stack Fingerprints
+                                </span>
+                                <span className="flex items-center gap-1.5 text-amber-300">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                                    Asset Inventory Sync
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                        <Link
+                            to="/recon"
+                            className="btn btn-primary px-4 py-2 flex items-center gap-2 text-xs font-mono uppercase tracking-wider"
+                        >
+                            <span>Open OSINT Center</span>
+                            <ArrowRight className="w-4 h-4" />
+                        </Link>
                     </div>
                 </div>
             </div>

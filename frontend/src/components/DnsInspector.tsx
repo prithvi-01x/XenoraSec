@@ -8,8 +8,7 @@ import {
     Copy, 
     Check, 
     Server, 
-    ArrowRight,
-    Terminal
+    ArrowRight
 } from 'lucide-react';
 import type { DNSIntelligence } from '../types/api';
 

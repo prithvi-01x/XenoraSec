@@ -12,8 +12,7 @@ import {
     Clock, 
     AlertCircle,
     CheckCircle2,
-    Radar,
-    Terminal
+    Radar
 } from 'lucide-react';
 import { useStartRecon, useReconHistory, useImportSubdomains } from '../hooks/useApi';
 import { SubdomainTable } from '../components/SubdomainTable';
