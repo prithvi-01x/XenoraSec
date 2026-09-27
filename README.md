@@ -345,6 +345,28 @@ XenoraSec reconstructs the remote application architecture using non-intrusive h
   5. `Referrer-Policy` (Information leakage mitigation)
   6. `Permissions-Policy` (Browser API restriction)
 
+### 6. Interactive OSINT Intelligence Center & Asset Pivot
+
+XenoraSec provides a full-featured tactical web console located at `/recon`, seamlessly linking passive discovery directly into active scanning and asset governance workflows:
+
+- **Tactical Recon Dispatcher**:
+  - Live domain query input with configurable toggle switches for subdomains, active DNS resolution, multi-record extraction, and web tech stack fingerprinting.
+  - Asynchronous execution status indicators with timing telemetry.
+- **Subdomain Discovery Matrix**:
+  - Instant client-side filtering by subdomain name, live resolution status, and discovery source (`crt.sh`, `passive_dns`).
+  - IP badge indicators displaying resolved IPv4/IPv6 addresses and quick-copy utilities.
+  - Direct 1-click **"Audit Target"** launcher pivoting any discovered subdomain directly into active Nmap/Nuclei scanning.
+  - Multi-select checkbox controls with bulk CSV export and instant **"Import to Assets"** synchronization.
+- **DNS & Network Topology Inspector**:
+  - Tabular breakdown organized across 5 record categories: `A / AAAA`, `MX Gateways`, `TXT & Policies`, `Nameservers (NS)`, and `IP ASN Blocks`.
+  - Integrated Mail Security Card highlighting SPF syntax, DMARC enforcement policies, and an automated spoofing risk verdict (`Low`, `Medium`, `High`).
+- **Tech Stack & Security Headers Card**:
+  - Categorized technology cards (Servers, Frameworks, CMS, Cloud/CDN) with detection confidence percentages.
+  - Defensive security headers scorecard evaluating HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, and Permissions-Policy with remediation guidance.
+- **Audit History & Quick Recon Shortcut**:
+  - Slide-out history ledger reviewing prior recon audits for quick inspection without re-running queries.
+  - Dedicated OSINT Quick Recon banner embedded directly on the main Operations Dashboard (`/`) for immediate access.
+
 ---
 
 ## 🏢 Asset Inventory & Attack Surface Management
@@ -520,6 +542,10 @@ XenoraSec provides a clean, fully documented OpenAPI (Swagger) interface accessi
 | `PATCH` | `/api/assets/{id}` | Update asset criticality, operational status, and notes | `200`, `400`, `404` |
 | `DELETE` | `/api/assets/{id}` | Delete asset and cascade remove linked ports/vulns | `200`, `404` |
 | `POST` | `/api/assets/{id}/scan` | Trigger automated re-scan of an existing asset | `200`, `404`, `503` |
+| `POST` | `/api/recon/` | Run passive OSINT reconnaissance against target domain | `200`, `400`, `500` |
+| `GET` | `/api/recon/{domain}` | Retrieve latest passive recon audit report for domain | `200`, `404` |
+| `GET` | `/api/recon/history` | List historical OSINT reconnaissance audits (paginated) | `200` |
+| `POST` | `/api/recon/{domain}/import-to-assets` | Bulk-import discovered subdomains directly into Asset Inventory | `200`, `400`, `404` |
 | `GET` | `/health` | Liveness & database connection health | `200`, `503` |
 
 ### API Usage Examples
@@ -643,6 +669,36 @@ curl -X PATCH "http://localhost:8000/api/assets/{asset_id}" \
 
 # Trigger an immediate re-scan of an asset
 curl -X POST "http://localhost:8000/api/assets/{asset_id}/scan"
+```
+
+#### 9. Passive Reconnaissance & OSINT API
+Execute autonomous OSINT discovery, inspect DNS/mail posture, and bulk-import discovered subdomains into the Asset Inventory:
+```bash
+# Run passive OSINT assessment on a domain
+curl -X POST "http://localhost:8000/api/recon/" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "domain": "example.com",
+       "include_subdomains": true,
+       "resolve_subdomains": true,
+       "include_dns": true,
+       "include_tech_stack": true
+     }'
+
+# Retrieve cached or latest recon assessment for a domain
+curl -s "http://localhost:8000/api/recon/example.com"
+
+# Query paginated recon history records
+curl -s "http://localhost:8000/api/recon/history?limit=10"
+
+# Bulk import discovered subdomains into Asset Inventory
+curl -X POST "http://localhost:8000/api/recon/example.com/import-to-assets" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "subdomains": ["api.example.com", "auth.example.com", "vpn.example.com"],
+       "criticality": "high",
+       "tags": ["recon-import", "perimeter"]
+     }'
 ```
 
 ---
