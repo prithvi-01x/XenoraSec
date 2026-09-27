@@ -222,3 +222,57 @@ class AssetVulnerability(Base):
     __table_args__ = (
         Index('ix_asset_vuln_unique', 'asset_id', 'template_id', 'name'),
     )
+
+
+class ReconHistory(Base):
+    """
+    Database model for passive reconnaissance and OSINT assessments.
+    Stores historical subdomains, DNS topology, and passive tech stack fingerprints.
+    """
+    __tablename__ = "recon_history"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    domain = Column(String(253), index=True, nullable=False)
+    status = Column(String(20), default="completed", nullable=False, index=True)
+    duration = Column(Float, default=0.0, nullable=False)
+    subdomains_count = Column(Integer, default=0, nullable=False)
+    active_subdomains_count = Column(Integer, default=0, nullable=False)
+    tech_detected_count = Column(Integer, default=0, nullable=False)
+    security_score = Column(Integer, default=0, nullable=False)
+
+    # Full serialized ReconResult JSON
+    result = Column(JSON, nullable=True)
+    error_message = Column(Text, nullable=True)
+
+    created_at = Column(
+        DateTime,
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+        index=True
+    )
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False
+    )
+
+    __table_args__ = (
+        Index('ix_recon_domain_created', 'domain', 'created_at'),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "domain": self.domain,
+            "status": self.status,
+            "duration": self.duration,
+            "subdomains_count": self.subdomains_count,
+            "active_subdomains_count": self.active_subdomains_count,
+            "tech_detected_count": self.tech_detected_count,
+            "security_score": self.security_score,
+            "result": self.result,
+            "error_message": self.error_message,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }
