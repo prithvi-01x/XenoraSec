@@ -1135,6 +1135,162 @@ class PassiveTechFingerprinter:
         )
 
 
+class ReconEngine:
+    """
+    Central passive reconnaissance coordinator managing multi-stage execution,
+    concurrency locks, rate-limiting, error resilience, and database persistence.
+    """
+
+    def __init__(self, max_concurrent_runs: int = 5):
+        self.semaphore = asyncio.Semaphore(max_concurrent_runs)
+        self.crtsh_client = CrtshClient()
+        self.passive_dns_client = PassiveDnsClient()
+        self.subdomain_resolver = SubdomainResolver()
+        self.dns_resolver = DNSIntelligenceResolver()
+        self.fingerprinter = PassiveTechFingerprinter()
+
+    async def execute_recon(
+        self,
+        domain: str,
+        include_subdomains: bool = True,
+        resolve_subdomains: bool = True,
+        include_dns: bool = True,
+        include_tech_stack: bool = True,
+        db: Optional[Any] = None,
+    ) -> ReconResult:
+        """
+        Execute an end-to-end passive OSINT reconnaissance assessment for domain.
+        """
+        clean_domain = domain.lower().strip().lstrip(".").split("/")[0].split(":")[0]
+        start_time = asyncio.get_running_loop().time()
+
+        async with self.semaphore:
+            logger.info(f"Initiating passive reconnaissance pipeline for target: {clean_domain}")
+
+            # 1. Subdomain Discovery Task
+            subdomains: List[SubdomainRecord] = []
+            subdomain_error: Optional[str] = None
+
+            async def _run_subdomains():
+                nonlocal subdomains, subdomain_error
+                if not include_subdomains:
+                    return
+
+                try:
+                    # Query crt.sh
+                    raw_ct = await self.crtsh_client.query_ct_logs(clean_domain)
+                    ct_records = self.crtsh_client.parse_records(raw_ct, clean_domain)
+
+                    # Query passive DNS fallback/complement
+                    pdns_records = await self.passive_dns_client.query_subdomains(clean_domain)
+
+                    # Merge records
+                    sub_map: Dict[str, SubdomainRecord] = {}
+                    for r in ct_records + pdns_records:
+                        if r.subdomain not in sub_map:
+                            sub_map[r.subdomain] = r
+                        else:
+                            # Merge IPs and timestamps
+                            existing = sub_map[r.subdomain]
+                            if r.ip_addresses:
+                                existing.ip_addresses = sorted(list(set(existing.ip_addresses + r.ip_addresses)))
+                            if r.is_active is True:
+                                existing.is_active = True
+                            if r.is_wildcard:
+                                existing.is_wildcard = True
+
+                    combined = list(sub_map.values())
+
+                    # If resolution requested, probe them
+                    if resolve_subdomains and combined:
+                        logger.info(f"Resolving {len(combined)} discovered subdomains for {clean_domain}")
+                        combined = await self.subdomain_resolver.resolve_records(combined)
+
+                    subdomains = combined
+                except Exception as e:
+                    logger.error(f"Subdomain discovery error for {clean_domain}: {e}")
+                    subdomain_error = str(e)
+
+            # 2. DNS Intelligence Task
+            dns_intel: Optional[DNSIntelligence] = None
+
+            async def _run_dns():
+                nonlocal dns_intel
+                if not include_dns:
+                    dns_intel = DNSIntelligence(domain=clean_domain)
+                    return
+
+                try:
+                    dns_intel = await self.dns_resolver.resolve_full_dns(clean_domain)
+                except Exception as e:
+                    logger.error(f"DNS intelligence collection error for {clean_domain}: {e}")
+                    dns_intel = DNSIntelligence(domain=clean_domain)
+
+            # 3. Passive Tech Stack Task
+            tech_stack: Optional[TechFingerprint] = None
+
+            async def _run_tech():
+                nonlocal tech_stack
+                if not include_tech_stack:
+                    return
+
+                try:
+                    tech_stack = await self.fingerprinter.fingerprint(clean_domain)
+                except Exception as e:
+                    logger.error(f"Tech stack fingerprinting error for {clean_domain}: {e}")
+
+            # Run tasks concurrently
+            await asyncio.gather(_run_subdomains(), _run_dns(), _run_tech(), return_exceptions=True)
+
+            duration = round(asyncio.get_running_loop().time() - start_time, 2)
+            active_count = sum(1 for s in subdomains if s.is_active is True)
+            tech_count = len(tech_stack.all_technologies) if tech_stack else 0
+            security_score = tech_stack.security_score if tech_stack else 0
+
+            # Guaranteed non-null DNSIntelligence
+            final_dns = dns_intel or DNSIntelligence(domain=clean_domain)
+
+            result = ReconResult(
+                domain=clean_domain,
+                target=domain,
+                status="completed" if not subdomain_error else "partial",
+                timestamp=datetime.now(UTC),
+                duration=duration,
+                subdomains_count=len(subdomains),
+                active_subdomains_count=active_count,
+                subdomains=subdomains,
+                dns=final_dns,
+                tech_stack=tech_stack,
+                error=subdomain_error,
+            )
+
+            # Persist to database if session provided
+            if db:
+                from app.db.crud import save_recon_result
+                try:
+                    await save_recon_result(
+                        db=db,
+                        domain=clean_domain,
+                        result_dict=result.model_dump(mode="json"),
+                        duration=duration,
+                        subdomains_count=len(subdomains),
+                        active_subdomains_count=active_count,
+                        tech_detected_count=tech_count,
+                        security_score=security_score,
+                        status=result.status,
+                        error_message=subdomain_error,
+                    )
+                except Exception as db_err:
+                    logger.warning(f"Failed to auto-persist recon result to DB: {db_err}")
+
+            return result
+
+
+# Singleton instance
+recon_engine = ReconEngine()
+
+
+
 
 
 
