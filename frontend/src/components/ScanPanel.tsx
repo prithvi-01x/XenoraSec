@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { 
     Play, 
@@ -9,7 +9,7 @@ import {
     Server, 
     Link2, 
     Network,
-    Layers,
+    Layers, 
     ChevronDown, 
     ChevronUp, 
     Tag, 
@@ -45,13 +45,26 @@ const CIDR_PRESETS = [
 ];
 
 export function ScanPanel() {
+    const location = useLocation();
+    const prefillTarget = (location.state as { prefillTarget?: string } | null)?.prefillTarget;
+
+    const [prevPrefill, setPrevPrefill] = useState(prefillTarget);
     const [scanMode, setScanMode] = useState<'single' | 'batch'>('single');
-    const [target, setTarget] = useState('');
+    const [target, setTarget] = useState(prefillTarget || '');
     const [rawBatchTargets, setRawBatchTargets] = useState('');
     const [profile, setProfile] = useState<ScanProfile>('quick');
     const [showAdvanced, setShowAdvanced] = useState(false);
     const [submitError, setSubmitError] = useState('');
     const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
+
+    // Adjust state during render when location.state.prefillTarget changes (official React pattern)
+    if (prefillTarget !== prevPrefill) {
+        setPrevPrefill(prefillTarget);
+        if (prefillTarget) {
+            setTarget(prefillTarget);
+            setScanMode('single');
+        }
+    }
 
     // Custom options state
     const [customPorts, setCustomPorts] = useState('');
