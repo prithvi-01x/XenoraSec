@@ -19,7 +19,13 @@ import type {
     BatchScanCreateRequest,
     BatchScanCreateResponse,
     BatchScanStatusResponse,
+    ReconResult,
+    ReconRequest,
+    ReconHistoryResponse,
+    SubdomainImportRequest,
+    SubdomainImportResponse,
 } from '../types/api';
+
 
 // API Base URL Configuration
 // - Development: Uses VITE_API_BASE_URL or defaults to localhost
@@ -236,6 +242,42 @@ export const assetApi = {
     // Scan specific asset
     scanAsset: async (assetId: number): Promise<ScanCreateResponse> => {
         const response = await apiClient.post<ScanCreateResponse>(`/api/assets/${assetId}/scan`);
+        return response.data;
+    },
+};
+
+export const reconApi = {
+    // Launch on-demand passive recon assessment
+    startRecon: async (data: ReconRequest): Promise<ReconResult> => {
+        const response = await apiClient.post<ReconResult>('/api/recon', data);
+        return response.data;
+    },
+
+    // Get cached or latest recon result for domain
+    getReconResult: async (domain: string): Promise<ReconResult> => {
+        const response = await apiClient.get<ReconResult>(`/api/recon/${encodeURIComponent(domain)}`);
+        return response.data;
+    },
+
+    // Get paginated history of passive recon runs
+    getReconHistory: async (params?: {
+        limit?: number;
+        offset?: number;
+        domain?: string;
+    }): Promise<ReconHistoryResponse> => {
+        const response = await apiClient.get<ReconHistoryResponse>('/api/recon/history', { params });
+        return response.data;
+    },
+
+    // Import discovered subdomains into Asset Inventory
+    importSubdomains: async (
+        domain: string,
+        data: SubdomainImportRequest
+    ): Promise<SubdomainImportResponse> => {
+        const response = await apiClient.post<SubdomainImportResponse>(
+            `/api/recon/${encodeURIComponent(domain)}/import-to-assets`,
+            data
+        );
         return response.data;
     },
 };
