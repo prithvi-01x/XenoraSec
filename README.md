@@ -308,8 +308,11 @@ DNS records define the routing backbone, hosting infrastructure, and email authe
 
 #### 📬 SPF & DMARC Spoofing Risk Evaluator
 Email spoofing remains a primary attack vector in initial access and CEO fraud. The engine inspects published TXT and `_dmarc.{domain}` records to calculate a deterministic email security score:
-- **SPF Evaluation**: Checks for valid `v=spf1` syntax, expands mechanisms (`include:`, `ip4:`, `redirect=`), and evaluates all-mechanisms (`-all` hardfail is compliant; `~all` softfail yields a warning; `?all` neutral or `+all` pass triggers severe spoofing risk).
-- **DMARC Evaluation**: Locates DMARC records, inspects policy enforcement directives (`p=reject` enforces strict rejection; `p=quarantine` isolates unauthenticated mail; `p=none` flags monitoring mode with zero spoofing protection), and checks forensic reporting tags (`rua=`, `ruf=`).
+- **SPF Evaluation (RFC 7208)**: Checks for valid `v=spf1` syntax, expands mechanisms (`include:`, `ip4:`, `redirect=`), and evaluates all-mechanisms (`-all` hardfail is compliant; `~all` softfail yields a warning; `?all` neutral or `+all` pass triggers severe spoofing risk).
+  - *Multi-Record PermError Guard*: Identifies duplicate SPF records per RFC 7208 §3.2 and flags domain with a permanent error (`permerror`) as insecure.
+- **DMARC Evaluation (RFC 7489)**: Locates DMARC records, inspects policy enforcement directives (`p=reject` enforces strict rejection; `p=quarantine` isolates unauthenticated mail; `p=none` flags monitoring mode with zero spoofing protection), and checks forensic reporting tags (`rua=`, `ruf=`).
+  - *Subdomain Policy Inheritance*: For subdomains without an explicit `_dmarc.{subdomain}` record, the engine automatically evaluates parent domain records per RFC 7489 §6.6.3 and respects subdomain policy directives (`sp=reject`).
+- **DKIM Selector Hints**: Passively scans TXT records and DNS entries for `v=DKIM1`, `k=rsa`, and `domainkey` hints to determine cryptographic mail signing support.
 - **Composite Mail Security Metric**: Generates a unified 0–100 score and risk classification (`low`, `medium`, `high`) directly in the UI.
 
 ---
@@ -337,6 +340,10 @@ XenoraSec reconstructs the remote application architecture using non-intrusive h
 - **Server Tokens & Infrastructure Headers**: Parses `Server`, `X-Powered-By`, `X-AspNet-Version`, `Via`, and `X-Generator` tokens with confidence weights.
 - **Session & Framework Cookie Heuristics**: Detects frameworks by signature cookies (`PHPSESSID` $\to$ PHP, `laravel_session` $\to$ Laravel, `csrftoken` / `sessionid` $\to$ Django, `connect.sid` $\to$ Express/Node.js, `ASP.NET_SessionId` $\to$ ASP.NET, `JSESSIONID` $\to$ Java/Spring, `session` $\to$ Flask/Python).
 - **DOM Signatures & CMS Markers**: Inspects HTML `<meta name="generator">` tags, script paths (`/wp-content/`, `/sites/default/`, `/_next/static/`), and framework markers (`data-reactroot`, `__vue_app__`).
+- **Cryptographic TLS / SSL Metrics**: Probes HTTPS endpoints to extract real cryptographic negotiation parameters:
+  - *Protocol Version*: Negotiated protocol (`TLSv1.3`, `TLSv1.2`).
+  - *Certificate Identity*: Common Name (Subject) and Issuing Certificate Authority (CA).
+  - *Validity & Expiry Monitoring*: Start date, expiration date, and remaining validity window in days.
 - **Defensive Security Headers Score**: Evaluates 6 vital defensive headers:
   1. `Strict-Transport-Security` (HSTS & max-age duration)
   2. `Content-Security-Policy` (CSP presence & default-src restrictions)
