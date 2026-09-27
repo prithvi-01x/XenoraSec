@@ -531,9 +531,13 @@ class DNSIntelligenceResolver:
         # 3. Overall rating
         if posture.has_dmarc and posture.dmarc_policy in ("reject", "quarantine") and posture.spf_status in ("pass", "warning"):
             posture.security_rating = "secure"
-        elif (posture.has_spf or posture.has_dmarc) and posture.dmarc_policy != "reject":
+        elif (posture.has_spf and posture.spf_status != "insecure") or (posture.has_dmarc and posture.dmarc_policy != "missing"):
             posture.security_rating = "warning"
+        else:
+            posture.security_rating = "insecure"
+
         return posture
+
 
     async def resolve_reverse_dns(self, ips: List[str]) -> Dict[str, str]:
         """Perform reverse DNS (PTR) resolution for discovered IP addresses."""
