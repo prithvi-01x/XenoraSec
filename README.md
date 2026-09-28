@@ -338,28 +338,82 @@ XenoraSec categorizes and dispatches Nuclei templates across modular security ve
 
 XenoraSec provides enterprise-grade mass scanning capabilities supporting both multi-target lists and standard IPv4 Classless Inter-Domain Routing (CIDR) subnet notations.
 
+```mermaid
+flowchart TD
+    subgraph Submission ["Ingress Batch Submission"]
+        INPUT["User Ingestion String\n(CIDR Subnets, Multi-line Hostnames, IPs)"]
+        PARSE["Delimiter Normalizer\n(Split on comma, newline, whitespace)"]
+        DEDUP["Deduplication & Canonical Trimming"]
+        INPUT --> PARSE --> DEDUP
+    end
+
+    subgraph Expansion ["CIDR Prefix Expansion & Validation"]
+        DEDUP --> CHECK_CIDR{"Is CIDR Notation?"}
+        CHECK_CIDR -->|Yes| EVAL_PREFIX{"Prefix >= /24?"}
+        EVAL_PREFIX -->|No (e.g. /16)| REJECT["Reject HTTP 422\n(Exceeds MAX_CIDR_PREFIX=24)"]
+        EVAL_PREFIX -->|Yes| EXPAND["ipaddress.ip_network\n(Calculate Usable Host IPs)"]
+        CHECK_CIDR -->|No| SINGLE["Direct Hostname / IP"]
+        EXPAND --> BATCH_MANIFEST["Batch Target Manifest (Up to 256 Targets)"]
+        SINGLE --> BATCH_MANIFEST
+    end
+
+    subgraph QueueOrchestration ["Concurrency Controlled Queue"]
+        BATCH_MANIFEST --> DISPATCHER["Batch Task Worker"]
+        DISPATCHER --> SEM["asyncio.Semaphore(BATCH_CONCURRENCY=3)"]
+        SEM --> W1["Worker Slot 1\n(Nmap + Nuclei)"]
+        SEM --> W2["Worker Slot 2\n(Nmap + Nuclei)"]
+        SEM --> W3["Worker Slot 3\n(Nmap + Nuclei)"]
+    end
+
+    subgraph Aggregation ["Batch Telemetry Aggregator"]
+        W1 --> BATCH_STATE[("Batch State Record\n(total, completed, failed, mean_risk)")]
+        W2 --> BATCH_STATE
+        W3 --> BATCH_STATE
+    end
+```
+
 ### 1. Subnet Notation & Prefix Governance
+
 Network security teams frequently need to assess complete subnets or IP blocks without manually listing every host:
-- **Prefix Boundary Enforcement**: Accepts subnet prefixes from `/24` to `/32` (e.g., `192.168.1.0/28`).
-- **Defensive Prefix Guard**: To prevent accidental denial of service or resource exhaustion, subnets broader than `/24` (such as `/16` or `/8`) are rejected with an explicit validation error (`MAX_CIDR_PREFIX=24`, maximum 256 hosts).
-- **Usable Host Expansion**: Automatically calculates network boundaries, broadcasts, and usable host addresses:
-  - `/30`: 2 usable hosts
-  - `/29`: 6 usable hosts
-  - `/28`: 14 usable hosts
-  - `/26`: 62 usable hosts
-  - `/24`: 254 usable hosts
-  - `/31` & `/32`: Single/point-to-point host boundaries handled cleanly.
+
+| CIDR Prefix | Subnet Mask | Usable Host Count | Network & Broadcast Addresses | Default Assessment Time |
+| :--- | :--- | :--- | :--- | :--- |
+| **`/32`** | `255.255.255.255` | 1 host | Host route (single host) | ~30 - 60 seconds |
+| **`/31`** | `255.255.255.254` | 2 hosts | RFC 3021 Point-to-Point link | ~1 - 2 minutes |
+| **`/30`** | `255.255.255.252` | 2 usable hosts | Excludes .0 network and .3 broadcast | ~1 - 2 minutes |
+| **`/29`** | `255.255.255.248` | 6 usable hosts | Excludes network and broadcast | ~3 - 5 minutes |
+| **`/28`** | `255.255.255.240` | 14 usable hosts | Excludes network and broadcast | ~6 - 10 minutes |
+| **`/27`** | `255.255.255.224` | 30 usable hosts | Excludes network and broadcast | ~15 - 20 minutes |
+| **`/26`** | `255.255.255.192` | 62 usable hosts | Excludes network and broadcast | ~30 - 45 minutes |
+| **`/25`** | `255.255.255.128` | 126 usable hosts | Excludes network and broadcast | ~1 - 1.5 hours |
+| **`/24`** | `255.255.255.0` | 254 usable hosts | Full Class C subnet boundary | ~2 - 3 hours |
+
+- **Defensive Prefix Guard**: To prevent accidental denial of service or database lockups, subnets broader than `/24` (such as `/16` with 65,534 hosts or `/8` with 16 million hosts) are rejected immediately at the API gate with HTTP 422:
+  ```json
+  {
+    "detail": "Subnet mask /16 exceeds maximum allowed width (/24). Maximum allowed hosts per batch is 256."
+  }
+  ```
+- **Network Boundary Exclusion**: Standard CIDR expansion automatically strips network (`.0`) and broadcast (`.255`) addresses to avoid transmitting non-routable packets.
+
+---
 
 ### 2. Multi-Target List Ingestion & Sanitization
 Targets can be supplied in flexible formats:
-- **Delimiters**: Supports comma-delimited strings (`192.168.1.1, 192.168.1.2`), newline-separated lists, or mixed arrays combining domains, individual IPs, and CIDRs.
-- **De-duplication & Trimming**: Automatically removes whitespace, carriage returns, and duplicate entries.
+- **Flexible Delimiters**: Supports comma-delimited strings (`192.168.1.1, 192.168.1.2`), newline-separated lists, or mixed arrays combining domains, individual IPs, and CIDRs.
+- **De-duplication & Trimming**: Automatically removes whitespace, carriage returns, and duplicate entries while preserving initial submission order.
 - **Per-Target Zero-Trust Validation**: Each expanded target in the batch independently traverses the SSRF, DNS resolution, and blacklist/whitelist gating rules before queue intake.
+- **Fault-Isolated Execution**: If one host in a 50-target batch fails DNS resolution or times out, that single scan is recorded as `FAILED`, while the remaining 49 scans continue executing without interruption.
+
+---
 
 ### 3. Asynchronous Batch Queue & Concurrency Slots
 - **Non-Blocking Ingestion**: Calling `POST /api/scan/batch` dispatches scans across background workers and returns immediately with a unique `batch_id` and scan manifest.
-- **Controlled Worker Concurrency**: Scans are scheduled via `BATCH_CONCURRENCY` (default: 3) to prevent saturation of the host network interface and database threadpool.
-- **Live Progress Telemetry**: The status endpoint `GET /api/scan/batch/{batch_id}` provides real-time counts (`total`, `completed`, `running`, `failed`, `pending`) and the aggregated arithmetic mean risk score across all batch targets.
+- **Controlled Worker Concurrency**: Scans are scheduled via `BATCH_CONCURRENCY` (default: 3) using an `asyncio.Semaphore`. This prevents local network interface exhaustion, file descriptor starvation, and SQLite lock contention.
+- **Live Progress Telemetry**: The status endpoint `GET /api/scan/batch/{batch_id}` provides real-time counts (`total`, `completed`, `running`, `failed`, `pending`) and the aggregated arithmetic mean risk score across all batch targets:
+  $$\bar{R}_{\text{batch}} = \frac{1}{N_{\text{completed}}} \sum_{i=1}^{N_{\text{completed}}} \text{RiskScore}_i$$
+
+---
 
 ### 4. Interactive Frontend Batch Management
 - **Target Mode Switcher**: Easily toggle between **Single Target** and **Multi-Target / Subnet** directly from the main `ScanPanel`.
