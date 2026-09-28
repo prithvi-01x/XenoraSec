@@ -1423,32 +1423,64 @@ GROQ_MODEL="llama-3.3-70b-versatile"
 
 ## 🚀 Installation & Local Development Setup
 
-### System Prerequisites
-Ensure the underlying security scanning binaries are installed on your host system:
+### System Prerequisites & Scanner Toolchain
+Ensure the underlying security scanning binaries (`nmap` and `nuclei`) are installed on your host system:
 
-#### 1. Install Nmap & Nuclei
-- **Ubuntu / Debian**:
-  ```bash
-  sudo apt-get update && sudo apt-get install -y nmap wget unzip
-  # Download precompiled Nuclei binary
-  wget https://github.com/projectdiscovery/nuclei/releases/download/v3.3.8/nuclei_3.3.8_linux_amd64.zip
-  unzip nuclei_3.3.8_linux_amd64.zip
-  sudo mv nuclei /usr/local/bin/
-  rm nuclei_3.3.8_linux_amd64.zip
-  nuclei -update-templates
-  ```
+#### 1. Ubuntu / Debian / Kali Linux
+```bash
+sudo apt-get update && sudo apt-get install -y nmap wget unzip python3-venv python3-pip nodejs npm
 
-- **macOS (Homebrew)**:
-  ```bash
-  brew install nmap nuclei
-  nuclei -update-templates
-  ```
+# Install precompiled Nuclei v3.3.8 binary
+wget https://github.com/projectdiscovery/nuclei/releases/download/v3.3.8/nuclei_3.3.8_linux_amd64.zip
+unzip nuclei_3.3.8_linux_amd64.zip
+sudo mv nuclei /usr/local/bin/
+rm nuclei_3.3.8_linux_amd64.zip
 
-- **Arch Linux**:
-  ```bash
-  sudo pacman -S nmap nuclei
-  nuclei -update-templates
-  ```
+# Initialize official community vulnerability templates
+nuclei -update-templates
+```
+
+#### 2. Fedora / RHEL / Rocky Linux
+```bash
+sudo dnf install -y nmap wget unzip python3 python3-pip nodejs
+
+# Install Nuclei
+wget https://github.com/projectdiscovery/nuclei/releases/download/v3.3.8/nuclei_3.3.8_linux_amd64.zip
+unzip nuclei_3.3.8_linux_amd64.zip
+sudo mv nuclei /usr/local/bin/
+rm nuclei_3.3.8_linux_amd64.zip
+nuclei -update-templates
+```
+
+#### 3. Arch Linux / Manjaro
+```bash
+sudo pacman -Syu nmap nuclei python nodejs npm
+nuclei -update-templates
+```
+
+#### 4. macOS (Apple Silicon & Intel via Homebrew)
+```bash
+# Install toolchain via Homebrew
+brew update
+brew install nmap nuclei python@3.12 node
+
+# Sync community templates
+nuclei -update-templates
+```
+
+#### 5. Windows 11 / 10 (WSL2 Ubuntu Recommended)
+Native Windows execution of low-level security tools often faces socket capability hurdles. We strongly recommend running inside **Windows Subsystem for Linux 2 (WSL2)**:
+```powershell
+# In Windows PowerShell (Administrator):
+wsl --install -d Ubuntu-24.04
+```
+Inside the WSL2 Ubuntu shell, follow the **Ubuntu / Debian** instructions above. Ensure `.wslconfig` in your Windows user directory includes:
+```ini
+[wsl2]
+networkingMode=mirrored
+dnsTunneling=true
+```
+This enables seamless localhost port mirroring between Windows browsers and the FastAPI backend (`http://localhost:8000`).
 
 ---
 
