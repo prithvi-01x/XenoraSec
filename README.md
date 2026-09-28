@@ -98,7 +98,9 @@ flowchart TB
     subgraph Client ["Client Layer (Browser & Mobile)"]
         UI["React 19 + Vite SPA"]
         TQ["TanStack Query (Auto-Polling & Cache)"]
+        TERM["Live Terminal Component (SSE / WS Replay)"]
         UI <--> TQ
+        UI <--> TERM
     end
 
     subgraph SecurityGate ["Security & Ingress Gate"]
@@ -108,8 +110,9 @@ flowchart TB
     end
 
     subgraph Core ["FastAPI Asynchronous Backend"]
-        ROUTER["REST API Routes\n(/api/scan, /health)"]
+        ROUTER["REST API Routes\n(/api/scan, /api/recon, /api/assets)"]
         TASK["Background Task Worker\n(_run_and_store_scan)"]
+        HUB["Live Terminal Streaming Hub\n(1000-Line Circular Buffer)"]
     end
 
     subgraph Engines ["Dual Security Execution Engines"]
@@ -123,8 +126,9 @@ flowchart TB
         AGG["Composite Risk Aggregator\n(0.0 - 10.0 Scale)"]
     end
 
-    subgraph Database ["Persistence Layer"]
-        DB[("SQLite (WAL Mode + 30s Busy Timeout)\n/ PostgreSQL")]
+    subgraph Persistence ["Persistence Layer & State"]
+        DB[("SQLite (WAL Mode + 30s Busy Timeout)\n/ PostgreSQL asyncpg")]
+        ASM[("Asset Inventory Registry\n(assets, ports, vulns)")]
     end
 
     Client -->|HTTP / JSON| RL
@@ -132,50 +136,105 @@ flowchart TB
     VAL --> SEM
     SEM --> ROUTER
     ROUTER -->|Spawn Background Task| TASK
-    TASK -->|Async Exec| NMAP
-    TASK -->|Async Stream| NUCLEI
+    TASK -->|Async Exec & Stream| NMAP
+    TASK -->|Async Stream JSONL| NUCLEI
+    NMAP -->|Lines / Ports| HUB
+    NUCLEI -->|Findings / Logs| HUB
+    HUB -.->|SSE / WebSocket| TERM
     NMAP --> Analysis
     NUCLEI --> Analysis
     HEUR --> AGG
-    GROQ -.->|Optional| AGG
-    AGG -->|Atomic Write| DB
+    GROQ -.->|Optional Fallback| AGG
+    AGG -->|Atomic Transaction| DB
+    AGG -->|Delta Upsert| ASM
     ROUTER -.->|Poll State| DB
 ```
 
-#### Scan Request Lifecycle
-```text
-[User Submits Target]
-        │
-        ▼
-[Proxy Header Check] ────(Spoofed / Rate Exceeded)───► [HTTP 429 Error]
-        │
-        ▼
-[DNS Resolution & SSRF Guard] ──(Private / Loopback)──► [HTTP 400 Rejected]
-        │
-        ▼
-[Queue Slot Acquisition] ───────(Slots Exhausted)────► [HTTP 503 Busy]
-        │
-        ▼
-[Scan ID Generated & Record Created (Status: Running)]
-        │
-        ├──────────────────────┬──────────────────────┐
-        ▼                                             ▼
- [Nmap Process (-sV)]                      [Nuclei Process (-jsonl)]
-        │                                             │
-   (XML Output)                              (Streaming Buffer)
-        │                                             │
-        └──────────────────────┬──────────────────────┘
-                               │
-                               ▼
-               [Composite Risk Scoring Engine]
-                 ├─ Michaelis-Menten Heuristic
-                 └─ Optional Groq LLM Context
-                               │
-                               ▼
-               [Persist to SQLite WAL / PostgreSQL]
-                               │
-                               ▼
-               [Status: Completed / Partial]
+#### Detailed Scan Request Lifecycle & Sequence Flow
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Security Analyst (Browser)
+    participant RateGate as RateLimiter & Proxy Guard
+    participant ValGate as SSRF & DNS Sanitizer
+    participant Router as FastAPI Router (/api/scan)
+    participant Worker as Background Worker
+    participant StreamHub as Terminal Streaming Hub
+    participant Nmap as Nmap Subprocess (-sT -sV)
+    participant Nuclei as Nuclei Subprocess (-jsonl)
+    participant AISvc as AI Risk Service (MM + Groq)
+    participant DB as SQLite WAL / Postgres
+
+    User->>RateGate: POST /api/scan/ {target: "example.com"}
+    RateGate->>RateGate: Verify Client IP & Sliding Window Quota
+    RateGate->>ValGate: Forward Target String
+    ValGate->>ValGate: socket.getaddrinfo() & RFC 1918 / Loopback Check
+    ValGate->>Router: Sanitized Hostname & Resolved IP
+    Router->>DB: INSERT scan_result (status="running")
+    Router->>Worker: Dispatch asyncio.create_task(_run_and_store_scan)
+    Router-->>User: HTTP 200 {scan_id, status: "running"}
+
+    par Parallel Dual Engine Scanning
+        Worker->>Nmap: Exec async subprocess (-sT -sV -Pn -oX -)
+        Worker->>Nuclei: Exec async subprocess (-jsonl -silent -no-interactsh)
+        loop Live Stdout Streaming
+            Nmap-->>StreamHub: Stdout line (Port discovery)
+            Nuclei-->>StreamHub: Stdout JSONL (Vulnerability match)
+            StreamHub-->>User: SSE / WebSocket event broadcast
+        end
+    end
+
+    Nmap-->>Worker: XML completed / EOF
+    Nuclei-->>Worker: JSONL stream completed / EOF
+    Worker->>Worker: Parse XML (Port table) & JSONL (Vuln list)
+    Worker->>AISvc: Compute Composite Risk (MM Formula)
+    opt Groq LLM Enabled
+        AISvc->>AISvc: Query Groq Llama 3.3 70B (10s timeout fallback)
+    end
+    AISvc-->>Worker: Final Risk Score (0.0 - 10.0) & AI Summary
+    Worker->>DB: UPDATE scan_result (status="completed", score, findings)
+    Worker->>DB: Upsert Asset Inventory (host, open ports, CVE associations)
+    User->>Router: GET /api/scan/results/{scan_id}
+    Router->>DB: SELECT scan_result
+    DB-->>Router: Result Record
+    Router-->>User: Final Scan Dossier & Risk Intelligence
+```
+
+#### Subsystem: Event-Driven Real-Time Telemetry Pipeline
+```mermaid
+flowchart LR
+    subgraph Execution ["Subprocess Execution"]
+        PROC1["Nmap stdout"]
+        PROC2["Nuclei stdout"]
+    end
+
+    subgraph Hub ["In-Memory Streaming Hub"]
+        RING["1000-Line Circular Ring Buffer"]
+        FANOUT["Async Broadcast Queue (fanout)"]
+        ANSI["ANSI Color & Control Code Sanitizer"]
+    end
+
+    subgraph Transports ["Transport Protocols"]
+        SSE["Server-Sent Events (SSE)\ntext/event-stream"]
+        WS["WebSocket Server\nFull-Duplex Text Frames"]
+    end
+
+    subgraph ClientTerminal ["Frontend Interactive Console"]
+        UI_TERM["Terminal Output Grid"]
+        AUTO_SCROLL["Smart Auto-Scroll Lock"]
+        SEARCH["In-Buffer RegEx Search"]
+    end
+
+    PROC1 --> ANSI
+    PROC2 --> ANSI
+    ANSI --> RING
+    RING --> FANOUT
+    FANOUT --> SSE
+    FANOUT --> WS
+    SSE --> UI_TERM
+    WS --> UI_TERM
+    UI_TERM --> AUTO_SCROLL
+    UI_TERM --> SEARCH
 ```
 
 ---
