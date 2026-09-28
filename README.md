@@ -2087,15 +2087,82 @@ If using Cloudflare, ensure **WebSockets** is toggled ON under **Network** setti
 
 ## 📁 Project Structure
 
-```
+```text
 xenorasec/
-├── app/                  # FastAPI Backend
-├── frontend/             # React Frontend
-├── Screenshots/          # Images
-├── docs/                 # Documentation
-├── .env.example          # Config template
-├── requirements.txt      # Python deps
-└── README.md             # This file
+├── app/                              # FastAPI Asynchronous Backend
+│   ├── __init__.py
+│   ├── main.py                       # Application factory, lifespan hooks, zombie recovery
+│   ├── core/                         # Core runtime components & middlewares
+│   │   ├── config.py                 # Pydantic Settings & environment validation
+│   │   ├── database.py               # SQLAlchemy async engine & SQLite WAL configuration
+│   │   ├── rate_limit.py             # Sliding-window IP rate limiter with proxy trust
+│   │   └── security.py               # Target sanitization, SSRF guard & DNS lookup
+│   ├── api/                          # REST API route handlers
+│   │   ├── v1/
+│   │   │   ├── scan.py               # Single & batch scan routes, stream endpoints
+│   │   │   ├── recon.py              # Passive OSINT & reconnaissance endpoints
+│   │   │   └── assets.py             # Attack surface management & inventory CRUD
+│   ├── models/                       # SQLAlchemy ORM entity definitions
+│   │   ├── scan.py                   # ScanResult, BatchScan database models
+│   │   ├── asset.py                  # Asset, AssetPort, AssetVulnerability models
+│   │   └── recon.py                  # ReconHistory ledger database model
+│   ├── schemas/                      # Pydantic schemas for request/response serialization
+│   │   ├── scan.py                   # ScanRequest, ScanResponse, ScanResultSchema
+│   │   ├── asset.py                  # AssetCreate, AssetUpdate, AssetDetailSchema
+│   │   └── recon.py                  # ReconRequest, ReconResultSchema, DNSRecords
+│   └── services/                     # Business logic and external tool wrappers
+│       ├── nmap_scanner.py           # Async Nmap wrapper with fault-tolerant XML parser
+│       ├── nuclei_scanner.py         # Async Nuclei wrapper with streaming JSONL reader
+│       ├── ai_service.py             # Michaelis-Menten kinetics & Groq Llama 3.3 LLM
+│       ├── stream_hub.py             # SSE & WebSocket real-time terminal buffer hub
+│       ├── recon_service.py          # crt.sh miner, Cloudflare DoH, RFC mail evaluator
+│       ├── asset_service.py          # Idempotent delta upsert & ASM inventory sync
+│       └── report_generator.py       # Multi-format security report compiler (PDF/HTML/MD/JSON)
+├── frontend/                         # React 19 + TypeScript + Vite SPA
+│   ├── index.html                    # Single Page Application HTML entrypoint
+│   ├── package.json                  # Frontend dependencies & build scripts
+│   ├── vite.config.ts                # Vite build and proxy development configuration
+│   ├── tailwind.config.js            # Tactical Dark theme design tokens & colors
+│   ├── nginx.conf                    # Production reverse proxy, caching & SSE/WS upgrades
+│   └── src/                          # Application source code
+│       ├── main.tsx                  # React DOM mount point & TanStack Query client
+│       ├── App.tsx                   # Top-level routing, sidebar & drawer shell
+│       ├── components/               # Tactical UI components
+│       │   ├── ScanPanel.tsx         # Target input, format detection & CIDR chips
+│       │   ├── LiveTerminal.tsx      # Terminal console with SSE/WS streaming & ANSI color
+│       │   ├── FindingCard.tsx       # Severity badge, CVSS pill & reproduction curl
+│       │   ├── AssetTable.tsx        # High-density ASM asset table & sorting
+│       │   ├── AssetDetailDrawer.tsx # Slide-out service & CVE inspection drawer
+│       │   ├── ReconPanel.tsx        # OSINT dispatcher, subdomain matrix & mail score
+│       │   └── ReportModal.tsx       # Multi-format export dialog (PDF/HTML/MD/JSON/CSV)
+│       ├── hooks/                    # Reusable custom React hooks
+│       │   ├── useScanStream.ts      # SSE and WebSocket streaming client hook
+│       │   └── useAssetInventory.ts  # TanStack query wrapper for ASM endpoints
+│       └── types/                    # Shared TypeScript interfaces & API contracts
+├── tests/                            # Test automation suite
+│   ├── conftest.py                   # Async Pytest fixtures & mock subprocess runners
+│   ├── test_security.py              # SSRF protection, loopback & private IP tests
+│   ├── test_rate_limit.py            # Sliding-window rate limiter & proxy anti-spoofing
+│   ├── test_cancellation.py         # Subprocess kill signals & zombie recovery
+│   ├── test_ai_service.py            # Michaelis-Menten math & Groq fallback tests
+│   ├── test_database.py              # SQLite WAL mode & concurrent connection tests
+│   ├── test_recon.py                 # crt.sh parsing, DoH fallback & RFC 7208/7489 tests
+│   ├── test_batch_scan.py            # CIDR subnet expansion & batch semaphore tests
+│   ├── test_assets.py                # Asset delta upsert & lifecycle state tests
+│   ├── test_api.py                   # REST API route integration tests
+│   └── e2e/                          # Playwright end-to-end browser tests
+├── docs/                             # Architecture & component documentation
+│   ├── UI_ARCHITECTURE.md
+│   ├── UI_COMPONENTS.md
+│   └── DESIGN_TOKENS.md
+├── docker-compose.yml                # Multi-container production deployment
+├── docker-compose.override.yml.example # Local development live-reload overrides
+├── Dockerfile                        # Multi-stage production backend container
+├── Dockerfile.render                 # Render blueprint cloud container
+├── render.yaml                       # Turnkey Render Blueprint specification
+├── requirements.txt                  # Python dependencies
+├── .env.example                      # Configuration template
+└── README.md                         # Comprehensive documentation
 ```
 
 ---
