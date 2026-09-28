@@ -59,6 +59,7 @@
 - [Asset Inventory & Attack Surface Management](#-asset-inventory--attack-surface-management)
 - [AI Risk Scoring Model](#-ai-risk-scoring-model)
 - [Live Terminal & Streaming Engine](#-live-terminal--streaming-engine)
+- [Multi-Format Security Report Generation](#-multi-format-security-report-generation)
 - [Security & Defensive Safeguards](#-security--defensive-safeguards)
 - [Database Architecture](#-database-architecture)
 - [REST API Reference](#-rest-api-reference)
@@ -913,6 +914,54 @@ Network fluctuations or tab reloads should never cause an analyst to miss critic
 - **Safe ANSI Normalization**: Scans produce colored ANSI escape sequences (`\x1b[32m` green for open ports, `\x1b[31m` red for critical vulnerabilities). XenoraSec strips dangerous control codes (such as terminal reset or cursor repositions) while rendering safe CSS color classes.
 - **Smart Auto-Scroll Lock**: The terminal console automatically locks to the bottom while streaming. If the user scrolls up to inspect an earlier line, auto-scroll pauses automatically and displays a "Scroll to bottom" badge.
 - **Real-Time Subprocess Demuxing**: Output lines are tagged by engine source (`[nmap]` vs `[nuclei]`), allowing engineers to filter the terminal view to inspect specific scanner output on the fly.
+
+---
+
+## 📑 Multi-Format Security Report Generation
+
+Security assessments must be communicated across varied stakeholders — from C-level executives needing strategic exposure metrics to DevSecOps engineers requiring verbatim reproduction payloads. XenoraSec incorporates a dedicated, multi-format export engine (`app/services/report_generator.py`) capable of generating audit-ready deliverables in five standardized formats.
+
+```mermaid
+flowchart TD
+    SCAN_DATA["Normalized Scan Record\n(Ports, CVEs, Risk Score, LLM Brief)"] --> REP_DISPATCH{"Report Formatter"}
+    
+    REP_DISPATCH -->|format=pdf| PDF["ReportLab PDF Engine\n(Vector Palette, Cover Page, Page Numbers)"]
+    REP_DISPATCH -->|format=html| HTML["Standalone HTML5 Engine\n(Embedded CSS, @media print, Dark Theme)"]
+    REP_DISPATCH -->|format=markdown| MD["GitHub-Flavored Markdown\n(Tables, Badges, Task Lists)"]
+    REP_DISPATCH -->|format=json| JSON["Machine-Readable JSON\n(Strict Pydantic Schema / SIEM Integration)"]
+    REP_DISPATCH -->|format=csv| CSV["Tabular CSV Flattener\n(Spreadsheet Triage & Jira Import)"]
+
+    PDF --> OUT["FastAPI Response Stream\nContent-Disposition: attachment"]
+    HTML --> OUT
+    MD --> OUT
+    JSON --> OUT
+    CSV --> OUT
+```
+
+### 1. Supported Document Formats
+
+| Format | Content-Type | Styling & Architecture | Target Audience |
+| :--- | :--- | :--- | :--- |
+| **PDF** | `application/pdf` | Built with **ReportLab**; incorporates vector corporate cover, severity color keys, header/footer page counts, and page-break guards (`KeepTogether`) | External clients, compliance auditors, board presentations |
+| **HTML** | `text/html` | Standalone zero-dependency HTML document with embedded tactical CSS, interactive collapsible findings, and print-to-PDF styles (`@media print`) | Browser distribution, internal corporate wikis, offline reading |
+| **Markdown**| `text/markdown` | GitHub-Flavored Markdown (GFM) formatted with UTF-8 status chips, code fences, and collapsible `<details>` blocks | Engineering tickets (GitHub Issues, GitLab MRs, Jira task descriptions) |
+| **JSON** | `application/json` | Pure serialized Pydantic output containing raw scanner payloads, timestamps, CVSS metadata, and AI synthesis | Automated CI/CD quality gates, Splunk, Elastic SIEM, SOAR pipelines |
+| **CSV** | `text/csv` | Flat tabular schema mapping each discovered port and vulnerability to a distinct row with CVSS, severity, and host identifiers | Risk spreadsheets, bulk vulnerability tracking, SOC spreadsheets |
+
+### 2. Report Modes: Technical vs. Executive
+
+XenoraSec provides two distinct rendering perspectives for each format:
+
+#### 🛠️ Technical Mode (`report_type=technical`)
+- **Full Spectrum Visibility**: Every discovered open port, service banner, protocol handshake, and template vulnerability is itemized.
+- **Remediation Payloads**: Includes matched URI endpoints, curl reproduction commands, CVE / CWE references, and EPSS likelihood scores where available.
+- **Raw Subprocess Artifacts**: Appends execution logs, runtime timing metrics, and Nmap command parameters.
+
+#### 👔 Executive Mode (`report_type=executive`)
+- **Strategic Exposure Score**: Prominently features the Michaelis-Menten risk gauge ($0.0 - 10.0$) with executive plain-English interpretation (`Low`, `Medium`, `Elevated`, `Critical`).
+- **Severity Breakdown Matrix**: Visual table outlining aggregate critical, high, medium, and low findings.
+- **Top 5 Priority Action Items**: Summarizes highest-impact remediation milestones to eliminate 80% of identified risk surface.
+- **Sanitized Complexity**: Hides lengthy raw packet dumps, technical regexes, and template strings to maintain clarity for management review.
 
 ---
 
