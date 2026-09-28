@@ -1448,6 +1448,67 @@ The application will be accessible at **`http://localhost`** (or your server's I
 
 ---
 
+## 🛡️ Container Hardening & Non-Root Security
+
+Security tools that audit infrastructure must themselves adhere to the highest standard of defense-in-depth. XenoraSec enforces rigorous container hardening to eliminate privilege escalation risks:
+
+```mermaid
+flowchart TD
+    subgraph ContainerBoundary ["Hardened Container Sandbox (UID 10001)"]
+        APP["FastAPI Application"]
+        NMAP_BIN["Nmap Binary (-sT unprivileged)"]
+        NUC_BIN["Nuclei Binary (v3.3.8)"]
+    end
+
+    subgraph SecurityControls ["Defensive Guardrails"]
+        USER["Unprivileged User: xenora (UID 10001)"]
+        CAPS["Linux Capabilities: cap_drop: ALL"]
+        ROOTFS["Read-Only Root Filesystem (read_only: true)"]
+        TMPFS["Scoped tmpfs: /tmp (noexec, nosuid, 64MB)"]
+        VOL["Persistent Volume /data (chmod 770, chown 10001:10001)"]
+    end
+
+    USER --> ContainerBoundary
+    CAPS --> ContainerBoundary
+    ROOTFS --> ContainerBoundary
+    TMPFS --> ContainerBoundary
+    VOL --> ContainerBoundary
+```
+
+### 1. Dedicated Unprivileged Execution (`UID 10001`)
+- **No Root User**: Both the backend Dockerfile and Render container create and execute as a dedicated unprivileged system user:
+  ```dockerfile
+  RUN groupadd -g 10001 xenora && \
+      useradd -u 10001 -g xenora -s /bin/bash -m xenora
+  USER xenora:xenora
+  ```
+- **Exploit Containment**: If a zero-day vulnerability in Nmap, Nuclei, or an upstream Python library were triggered, the attacker is trapped inside an unprivileged user context without access to `/etc`, host sockets, or host devices.
+
+### 2. Capability Dropping (`cap_drop: ALL`)
+- **Zero Raw Sockets**: Traditional vulnerability scanners require `CAP_NET_RAW` to forge SYN packets. XenoraSec's architecture uses `-sT` (TCP Connect), allowing **all Linux capabilities to be completely dropped**:
+  ```yaml
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  ```
+
+### 3. Read-Only Root Filesystem & Tmpfs Mounts
+- In production, containers can run with an immutable root filesystem (`read_only: true`).
+- Ephemeral writes for scanner scratch files are strictly restricted to locked-down memory `tmpfs` mounts:
+  ```yaml
+  read_only: true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=64M
+    - /run:rw,noexec,nosuid,size=16M
+  ```
+
+### 4. Volume Permissions & SQLite Storage Isolation
+- The persistent database volume is mounted at `/data` with ownership pre-assigned to `10001:10001`.
+- SQLite WAL and SHM shared memory files are isolated inside `/data/scans.db*`, preventing write access to application source directories (`/app`).
+
+---
+
 ## 🔄 CI/CD Automation Pipeline
 
 XenoraSec incorporates an automated continuous integration and testing pipeline orchestrated via **GitHub Actions** (`.github/workflows/ci.yml`). Every commit and pull request targeting the `main` branch undergoes automated matrix validation:
