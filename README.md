@@ -596,40 +596,107 @@ Whenever any scan completes (whether launched individually or via a multi-target
 
 ## 🧠 AI Risk Scoring & Saturation Model
 
-Security teams need risk scores that are both **contextually intelligent** and **mathematically predictable**. XenoraSec implements a hybrid evaluation system:
+Security teams need risk scores that are both **contextually intelligent** and **mathematically predictable**. Traditional scanners often use arbitrary unbounded sums (where 20 low-severity bugs produce an alarming "score 100") or simplistic step functions that hide nuances. XenoraSec implements a hybrid evaluation system marrying biochemical enzyme saturation kinetics with large language model context.
 
 ### 1. The Michaelis-Menten Mathematical Saturation Model
-Rather than using arbitrary linear formulas that easily overflow or artificial step-functions, XenoraSec uses a hyperbolic saturation function adapted from enzyme kinetics (Michaelis-Menten / Hill equation):
+
+Adapted from the Michaelis-Menten biochemical kinetics model ($\text{rate} = \frac{V_{\max} \cdot [S]}{K_m + [S]}$), XenoraSec models the relationship between cumulative vulnerability exposure ($S$) and organizational risk ($\text{Score} \in [0.0, 10.0]$):
 
 $$\text{Risk Score} = V_{\max} \cdot \left( \frac{S}{S + K_m} \right)$$
 
 Where:
-- **$V_{\max} = 10.0$**: The theoretical maximum risk score ceiling.
-- **$K_m = 15.0$**: The half-saturation constant (the raw score required to yield exactly a 5.0 risk score).
+- **$V_{\max} = 10.0$**: The theoretical asymptotic risk score ceiling (perfect compromise).
+- **$K_m = 15.0$**: The half-saturation constant — exactly $15.0$ units of raw vulnerability exposure are required to yield a balanced midpoint score of $5.0$.
 - **$S$**: The accumulated raw vulnerability and network exposure score.
 
-#### Raw Score ($S$) Calculation:
-$$S = \sum_{v \in V} \text{Weight}(\text{severity}_v) + \sum_{v \in V} \left( \text{CVSS}_v \times 0.15 \right) + \min\left( \text{open\_ports} \times 0.05, 1.0 \right)$$
+```text
+Risk Score (0 - 10)
+  10.0 ┤                                        . - - - - - - - Asymptote Vmax = 10.0
+   9.0 ┤                                  . · ´
+   8.0 ┤                            . · ´
+   7.0 ┤                      . · ´
+   6.0 ┤                . · ´
+   5.0 ┤----------. · ´ (Km = 15.0, Score = 5.0)
+   4.0 ┤        . ´
+   3.0 ┤      . ´
+   2.0 ┤    . ´
+   1.0 ┤  . ´
+   0.0 ┼──┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────►
+       0    5   10   15   20   25   30   35   40   45   50   Raw Score (S)
+```
 
-| Finding Type | Base Weight | Multiplier / Cap | Description |
+#### Raw Exposure ($S$) Formulation
+
+$$S = \sum_{v \in V} \text{BaseWeight}(\text{severity}_v) + \sum_{v \in V} \left( \text{CVSS}_v \times 0.15 \right) + \min\left( \text{open\_ports} \times 0.05, 1.0 \right)$$
+
+| Finding Component | Base Weight | Modifier / Cap | Description |
 | :--- | :--- | :--- | :--- |
-| **Critical** | `5.0` | N/A | Remotely exploitable RCE, auth bypass, SQLi |
-| **High** | `3.0` | N/A | Privileged read, SSRF, major misconfigurations |
-| **Medium** | `2.0` | N/A | Reflected XSS, CSRF, insecure transport |
-| **Low** | `1.0` | N/A | Information disclosures, weak cipher suites |
-| **Info / Unknown**| `0.5` | N/A | Technology banners, DNS records, headers |
-| **CVSS Metric** | Variable | $\times 0.15$ | Direct contribution from official CVSS score |
-| **Open Ports** | Variable | $\min(P \times 0.05, 1.0)$ | Attack surface perimeter exposure factor |
+| **Critical Finding** | `5.0` | N/A | Remotely exploitable RCE, unauthenticated admin takeover, SQLi |
+| **High Finding** | `3.0` | N/A | Privileged data exfiltration, SSRF, major auth flaws |
+| **Medium Finding** | `2.0` | N/A | Reflected XSS, CSRF, insecure transport cipher suites |
+| **Low Finding** | `1.0` | N/A | Information disclosure, verbose error stacks |
+| **Info / Unknown** | `0.5` | N/A | Software version banners, DNS zone metadata |
+| **CVSS Modifier** | Variable | $\times 0.15$ | Weight proportional to official CVSS v3.1 base score |
+| **Open Port Surface**| Variable | $\min(P \times 0.05, 1.0)$ | Perimeter footprint factor (capped at 1.0 point across 20+ open ports) |
 
-#### Mathematical Guarantees:
-1. **Strict Monotonicity**: Adding any new vulnerability or open port always increases or preserves the score ($\frac{\partial \text{Score}}{\partial S} > 0$).
-2. **Strict Boundedness**: For any finite or infinite set of findings, $0.0 \le \text{Score} \le 10.0$.
-3. **Diminishing Marginal Risk**: The first critical vulnerability introduces an urgent jump (~2.5 to 3.5 points), while additional findings reflect real-world attack path convergence rather than artificial numeric inflation.
+#### Step-by-Step Worked Scenarios
 
-### 2. Optional Groq Cloud LLM Integration
-When `GROQ_API_KEY` is defined in `.env`, XenoraSec augments the heuristic model with a zero-latency inference call to **Llama 3.3 70B** on Groq Cloud:
-- **Holistic Threat Analysis**: Evaluates how open port topologies chain together with discovered template vulnerabilities.
-- **Zero-Friction Fallback**: If the Groq API exceeds the 10-second timeout, runs out of quota, or encounters a network partition, the platform silently and immediately falls back to the deterministic Michaelis-Menten model without failing the scan.
+##### Scenario A: Low-Exposure Perimeter Asset
+- **Asset**: Static landing page with 2 open ports (80, 443) and 1 informational header finding (`http-missing-security-headers`, CVSS 0.0).
+- **Calculation**:
+  $$S = 0.5 + (0.0 \times 0.15) + \min(2 \times 0.05, 1.0) = 0.5 + 0.0 + 0.10 = 0.60$$
+  $$\text{Risk Score} = 10.0 \times \left( \frac{0.60}{0.60 + 15.0} \right) = 10.0 \times \frac{0.60}{15.60} \approx \mathbf{0.38} \quad \text{(Low Risk)}$$
+
+##### Scenario B: Typical Corporate Web Portal
+- **Asset**: Web application with 3 open ports (80, 443, 8080), 1 Medium finding (`cve-2023-xxxx` XSS, CVSS 6.1), and 1 Low finding (`tls-weak-cipher`, CVSS 3.7).
+- **Calculation**:
+  $$S = [2.0 + (6.1 \times 0.15)] + [1.0 + (3.7 \times 0.15)] + \min(3 \times 0.05, 1.0)$$
+  $$S = [2.0 + 0.915] + [1.0 + 0.555] + 0.15 = 2.915 + 1.555 + 0.15 = 4.62$$
+  $$\text{Risk Score} = 10.0 \times \left( \frac{4.62}{4.62 + 15.0} \right) = 10.0 \times \frac{4.62}{19.62} \approx \mathbf{2.35} \quad \text{(Medium Risk)}$$
+
+##### Scenario C: Active Remote Code Execution (RCE) Compromise
+- **Asset**: Internal API gateway with 5 open ports, 1 Critical finding (`log4shell` RCE, CVSS 10.0), and 1 High finding (SSRF, CVSS 8.6).
+- **Calculation**:
+  $$S = [5.0 + (10.0 \times 0.15)] + [3.0 + (8.6 \times 0.15)] + \min(5 \times 0.05, 1.0)$$
+  $$S = [5.0 + 1.50] + [3.0 + 1.29] + 0.25 = 6.50 + 4.29 + 0.25 = 11.04$$
+  $$\text{Risk Score} = 10.0 \times \left( \frac{11.04}{11.04 + 15.0} \right) = 10.0 \times \frac{11.04}{26.04} \approx \mathbf{4.24} \quad \text{(Elevated)}$$
+
+##### Scenario D: Severely Compromised Host (Asymptotic Saturation)
+- **Asset**: Multi-vulnerability testbed with 15 open ports, 4 Critical RCEs (CVSS 9.8), 6 High vulnerabilities (CVSS 7.5), and 10 Medium findings.
+- **Calculation**:
+  $$S = 4 \times [5.0 + 1.47] + 6 \times [3.0 + 1.125] + 10 \times [2.0 + 0.75] + 0.75 = 25.88 + 24.75 + 27.50 + 0.75 = 78.88$$
+  $$\text{Risk Score} = 10.0 \times \left( \frac{78.88}{78.88 + 15.0} \right) = 10.0 \times \frac{78.88}{93.88} \approx \mathbf{8.40} \quad \text{(Critical)}$$
+
+#### Mathematical Guarantees
+1. **Strict Monotonicity**: Adding any discovery strictly increases the score: $\frac{\partial \text{Score}}{\partial S} = \frac{V_{\max} \cdot K_m}{(S + K_m)^2} > 0$ for all $S \ge 0$.
+2. **Asymptotic Boundedness**: For any infinite collection of vulnerabilities, $\lim_{S \to \infty} \text{Score} = V_{\max} = 10.0$. The score cannot exceed 10.0.
+3. **Diminishing Marginal Risk**: The derivative $\frac{\partial \text{Score}}{\partial S}$ decreases monotonically with $S$, ensuring the first critical vulnerability has the largest marginal impact.
+
+---
+
+### 2. Groq Cloud LLM Contextual Analysis & Circuit Breaker
+
+While the Michaelis-Menten formula establishes reproducible quantitative scoring, real-world risk depends on **attack chaining** (e.g. how an open SSH port links with leaked credentials or how a web SSRF accesses an internal metadata service).
+
+```mermaid
+flowchart LR
+    FINDINGS["Scan Discoveries\n(Ports + Nuclei JSONL)"] --> MM["Michaelis-Menten Evaluator\n(Deterministic Baseline)"]
+    FINDINGS --> PROMPT["Contextual Threat Prompt Builder"]
+    PROMPT --> GROQ["Groq Cloud API\n(Llama 3.3 70B Versatile)"]
+    GROQ -->|Success <= 10s| SYNTH["Synthesized Security Brief\n(Attack Paths & Exploit Chain)"]
+    GROQ -->|Timeout / Quota / 5xx| FALLBACK["Circuit Breaker Fallback\n(Return Deterministic Baseline)"]
+    MM --> SYNTH
+    MM --> FALLBACK
+```
+
+#### Prompt Engineering & Structured Inference
+When `GROQ_API_KEY` is provided, `AIService` issues an inference request to `llama-3.3-70b-versatile` running on Groq's low-latency LPU infrastructure:
+- **Zero-Temperature Determinism**: Configured with `temperature: 0.1` and `response_format: {"type": "json_object"}`.
+- **Threat Vector Synthesis**: The model evaluates whether open service versions (e.g. OpenSSH 7.2p2) correlate with web application CVEs.
+- **Fail-Safe Circuit Breaker**:
+  - A strict **10-second timeout** (`timeout=10.0`) wraps the HTTP client call.
+  - If Groq returns HTTP 429 (rate limited), HTTP 503, invalid JSON, or times out, the exception is caught and logged.
+  - The scan status remains `COMPLETED`, returning the Michaelis-Menten score with `ai_augmented: false` without delaying scan delivery.
 
 ---
 
