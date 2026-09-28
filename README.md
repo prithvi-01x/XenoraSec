@@ -1884,30 +1884,28 @@ npm run build
 
 ### 3. Playwright End-to-End (E2E) Browser Automation Guide
 
-XenoraSec includes end-to-end browser test suites powered by **Playwright** (`tests/e2e/`), automating critical user journeys across desktop and mobile viewports:
+XenoraSec includes automated end-to-end browser verification suites powered by **Playwright** (`verify_ui_playwright.py`), validating critical user journeys across desktop (1440x900) and mobile (375x812) viewports:
 
-#### Running Playwright Tests
+#### Running Playwright Verification
+
 ```bash
-# Install Playwright browser dependencies (Chromium, Firefox, WebKit)
-npx playwright install --with-deps
+# 1. Install Playwright browser binaries (Chromium)
+playwright install chromium
 
-# Run all E2E tests headlessly
-npx playwright test
+# 2. Ensure frontend preview or dev server is running on port 5173
+npm --prefix frontend run preview -- --port 5173
 
-# Run tests in interactive UI mode with time-travel debugger
-npx playwright test --ui
-
-# Inspect visual HTML test execution report
-npx playwright show-report
+# 3. Execute the Playwright UI verification suite
+python3 verify_ui_playwright.py
 ```
 
 #### Automated End-to-End Test Scenarios
-1. **Target Submission Journey**: Types target string, verifies dynamic format badge (`DOMAIN`), triggers scan, and asserts redirection to live progress view.
-2. **CIDR Batch Management**: Selects CIDR mode, clicks `/29` quick-fill chip, verifies target preview counter shows 6 hosts, submits batch, and validates batch progress modal.
-3. **Live Terminal Streaming**: Attaches to running scan SSE channel, verifies terminal console displays green port records and yellow/red vulnerability stream entries.
-4. **Interactive Asset Drawer**: Navigates to `/assets`, filters by `Critical` status, clicks host row, and asserts slide-out inspection drawer displays open ports and CVE references.
-5. **Multi-Format Report Export**: Clicks Export button, selects PDF / HTML / Markdown options, and verifies browser download triggers with valid file attachments.
-6. **Mobile Responsive Navigation**: Emulates mobile viewport (375x812 iPhone), asserts desktop sidebar collapses into hamburger button, opens drawer, and verifies responsive table scroll.
+1. **Dashboard & Metric Verification**: Asserts tactical header, KPI telemetry cards (Cumulative Scans, Discovered Hosts, Critical Findings, Open Ports), and Recharts SVG mounting without hydration errors.
+2. **Scan Mode & CIDR Quick-Fill Toggle**: Toggles Single Host vs Batch / CIDR mode, exercises `/29` quick-fill chip, verifies target preview counter, and tests form validation error states.
+3. **Scan Profile & Advanced Policy Accordion**: Selects scan profiles (Quick Recon, Full Web Audit), expands Advanced Engine accordion, and asserts timing policies (T0-T5) and custom tag inputs.
+4. **Asset Attack Surface Drawer**: Navigates to `/assets`, checks high-density asset table rendering, clicks asset row, and asserts slide-out inspection drawer displays open ports and audit re-scan launcher.
+5. **Passive Reconnaissance & OSINT Center**: Navigates to `/recon`, verifies passive subdomain matrix, DNS inspector tabs, and RFC 7208/7489 mail security hygiene scorecards.
+6. **Mobile Responsive Navigation**: Emulates mobile viewport (375x812 iPhone), asserts desktop sidebar collapses into hamburger drawer, opens modal overlays, and checks touch responsiveness.
 
 ---
 
