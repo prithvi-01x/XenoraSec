@@ -998,17 +998,70 @@ XenoraSec supports both development SQLite and enterprise-scale PostgreSQL via S
 
 ```mermaid
 erDiagram
+    SCAN_RESULT ||--o{ SCAN_RESULT : "retries (parent_scan_id)"
+    ASSET ||--o{ ASSET_PORT : "exposes (1:N cascade)"
+    ASSET ||--o{ ASSET_VULNERABILITY : "affects (1:N cascade)"
+    RECON_HISTORY ||--o{ ASSET : "imports to"
+
     SCAN_RESULT {
-        string scan_id PK "UUIDv4 identifier"
+        int id PK "Auto-increment primary key"
+        string scan_id "Unique UUIDv4 identifier"
         string target "Validated hostname or IP"
         string status "running | completed | failed | timeout | partial"
         float risk_score "0.0 - 10.0 score"
         json result "Raw Nmap and Nuclei payloads"
-        string error_message "Failure or partial cause"
-        float duration "Total execution seconds"
-        string parent_scan_id FK "Original scan if retried"
+        string scan_profile "quick | full | network | custom"
+        string batch_id "UUIDv4 grouping if batch scan"
+        string parent_scan_id "FK to original scan if retried"
         datetime created_at "ISO UTC timestamp"
-        datetime updated_at "ISO UTC timestamp"
+    }
+
+    ASSET {
+        int id PK "Auto-increment primary key"
+        string ip_address "Discovered host IP"
+        string hostname "Resolved FQDN domain"
+        string asset_type "ip | domain | url | cidr_host"
+        string status "active | scanned | inactive"
+        string criticality "low | medium | high | critical"
+        float risk_score "Composite posture score"
+        int open_ports_count "Discovered active ports"
+        int vulnerabilities_count "Active CVE count"
+        datetime last_scanned_at "Timestamp of latest scan"
+    }
+
+    ASSET_PORT {
+        int id PK "Auto-increment primary key"
+        int asset_id FK "FK referencing assets.id"
+        int port "Port number"
+        string protocol "tcp | udp"
+        string service "Service banner identity"
+        string version "Identified software version"
+        datetime last_seen "Observation timestamp"
+    }
+
+    ASSET_VULNERABILITY {
+        int id PK "Auto-increment primary key"
+        int asset_id FK "FK referencing assets.id"
+        string template_id "Nuclei template identifier"
+        string name "Vulnerability title"
+        string severity "critical | high | medium | low | info"
+        string cve "CVE reference ID"
+        float cvss "CVSS v3.1 base score"
+        string status "open | resolved"
+        datetime first_seen "Discovery timestamp"
+        datetime last_seen "Reconfirmation timestamp"
+    }
+
+    RECON_HISTORY {
+        int id PK "Auto-increment primary key"
+        string domain "Target apex or FQDN domain"
+        string status "completed | failed"
+        float duration "Recon run seconds"
+        int subdomains_count "Total CT logs mined"
+        int active_subdomains_count "Live resolved hosts"
+        int security_score "Mail & headers hygiene score"
+        json result "Serialized DNS & OSINT payload"
+        datetime created_at "ISO UTC timestamp"
     }
 ```
 
