@@ -595,46 +595,93 @@ XenoraSec provides a full-featured tactical web console located at `/recon`, sea
 XenoraSec transforms ephemeral scan results into a persistent, living Attack Surface Management (ASM) repository. Rather than losing port discoveries and CVE findings in isolated scan logs, assets are centrally tracked, classified, and monitored over time.
 
 ### 1. Automated Finding Ingestion & Delta Sync
-Whenever any scan completes (whether launched individually or via a multi-target CIDR batch):
+
+Whenever any scan completes (whether launched individually, via a multi-target CIDR batch, or synced from passive OSINT):
 - **Autonomous Indexing**: The backend service parses Nmap port tables and Nuclei vulnerability lists, automatically creating or updating asset records in the `assets` table.
-- **Idempotent Upsert Mechanics**: Repeated assessments of the same host do not clutter the database with duplicate assets. Instead, `upsert_asset_from_scan` performs an intelligent delta update:
+- **Idempotent Upsert State Machine**: Repeated assessments of the same host do not clutter the database with duplicate assets. Instead, `upsert_asset_from_scan` performs an intelligent delta update:
   - Updates host metadata (`last_scanned_at`, `risk_score`, severity distribution counters).
   - Synchronizes open ports, updating service/version information and `last_seen` timestamps.
   - Links discovered vulnerabilities, preserving `first_seen` audit history and marking re-confirmed CVEs.
 
-### 2. Relational Entity Architecture
+```mermaid
+flowchart TD
+    SCAN_FINISH["Scan Execution Finishes (Nmap + Nuclei)"] --> EXTRACT["Extract Host IP & FQDN"]
+    EXTRACT --> QUERY{"Asset Exists in assets Table?"}
+    QUERY -->|No| INSERT["INSERT new Asset Record\n(status: 'scanned', criticality: 'medium')"]
+    QUERY -->|Yes| UPDATE["UPDATE Asset Metadata\n(last_scanned_at, risk_score, counts)"]
+    
+    INSERT --> PORT_LOOP["Iterate Discovered Ports"]
+    UPDATE --> PORT_LOOP
+
+    PORT_LOOP --> PORT_QUERY{"Port Already Linked?"}
+    PORT_QUERY -->|No| INSERT_PORT["INSERT AssetPort\n(port, protocol, service, version)"]
+    PORT_QUERY -->|Yes| UPDATE_PORT["UPDATE AssetPort\n(version, last_seen = NOW())"]
+
+    INSERT_PORT --> VULN_LOOP["Iterate Discovered Vulnerabilities"]
+    UPDATE_PORT --> VULN_LOOP
+
+    VULN_LOOP --> VULN_QUERY{"Vulnerability Exists for Asset?"}
+    VULN_QUERY -->|No| INSERT_VULN["INSERT AssetVulnerability\n(status: 'active', first_seen: NOW())"]
+    VULN_QUERY -->|Yes| CONFIRM_VULN["UPDATE AssetVulnerability\n(status: 'active', last_seen: NOW(), reconfirmed: true)"]
+
+    INSERT_VULN --> STATS_RECALC["Recalculate Perimeter KPI Metrics"]
+    CONFIRM_VULN --> STATS_RECALC
+```
+
+### 2. Relational Entity Architecture & Indexing Strategy
+
 ```text
 ┌────────────────────────────────────────────────────────┐
 │                        Asset                           │
 │  - id: Integer (PK)                                    │
-│  - ip_address: String (Indexed)                        │
+│  - ip_address: String (Indexed, b-tree)                │
 │  - hostname: String (Nullable, Indexed)                │
 │  - asset_type: 'ip' | 'domain' | 'url' | 'cidr_host'   │
 │  - status: 'active' | 'scanned' | 'inactive'           │
 │  - criticality: 'low' | 'medium' | 'high' | 'critical' │
-│  - risk_score: Float (0.0 - 10.0)                      │
+│  - risk_score: Float (0.0 - 10.0, Indexed)             │
 │  - open_ports_count, vulns_count, severity counters    │
 │  - tags: JSON List / notes: Text                       │
+│  - created_at, updated_at, last_scanned_at: Timestamp  │
 └───────────────────────────┬────────────────────────────┘
                             │ 1:N Relationships (Cascade Delete)
              ┌──────────────┴──────────────┐
              ▼                             ▼
 ┌─────────────────────────┐   ┌──────────────────────────────┐
 │       AssetPort         │   │      AssetVulnerability      │
-│ - port, protocol        │   │ - template_id, name          │
-│ - service, product      │   │ - severity, cvss, cve        │
-│ - version, last_seen    │   │ - matched_at, status         │
+│ - id: Integer (PK)      │   │ - id: Integer (PK)           │
+│ - asset_id: Integer (FK)│   │ - asset_id: Integer (FK)     │
+│ - port: Integer         │   │ - template_id: String        │
+│ - protocol: 'tcp'|'udp' │   │ - name: String               │
+│ - service: String       │   │ - severity: SeverityEnum     │
+│ - product: String       │   │ - cvss: Float (Nullable)     │
+│ - version: String       │   │ - cve: String (Nullable)     │
+│ - last_seen: Timestamp  │   │ - matched_at: String         │
+│                         │   │ - status: 'active'|'resolved'│
+│                         │   │ - first_seen, last_seen      │
 └─────────────────────────┘   └──────────────────────────────┘
 ```
 
-### 3. Asset Governance & Lifecycle Operations
-- **Business Criticality Classification**: Assign custom criticality levels (`critical`, `high`, `medium`, `low`) and organizational tags to prioritize remediation efforts on core infrastructure.
-- **Targeted Re-Scanning**: Re-trigger scans against any asset directly with one click via `POST /api/assets/{id}/scan`, automatically inheriting preferred scan profiles and options.
-- **Perimeter Metric Aggregation**: Rapidly query overall posture statistics with `GET /api/assets/stats`, returning real-time counts across asset types, risk bands, open ports, and active vulnerabilities.
+- **Composite Query Optimization**: Indexes on `(criticality, risk_score)` and `(status, last_scanned_at)` ensure sub-millisecond filtering even across thousands of indexed enterprise assets.
+- **Referential Integrity**: All child ports and vulnerabilities use foreign key constraints with `ON DELETE CASCADE`.
 
-### 4. Enterprise Asset UI & Inspection Drawer
-- **Asset Command Center**: Dedicated `/assets` view featuring responsive filter controls, keyword search, criticality dropdowns, and tabular host matrices.
-- **Deep Service & CVE Inspection Drawer**: Click any asset row to open an interactive drawer displaying all exposed service versions (SSH, HTTP, Nginx, Envoy) and Nuclei CVE findings with direct external references.
+---
+
+### 3. Business Criticality Classification & Triage Governance
+
+Security teams can govern their perimeter through customizable criticality tiers:
+
+| Criticality Tier | Target Types | Scanning Cadence | Remediation SLA |
+| :--- | :--- | :--- | :--- |
+| **`Critical`** | Production auth gateways, payment processors, core databases | Daily continuous audits | 24 Hours |
+| **`High`** | Public APIs, customer dashboards, primary mail servers | Weekly scans | 7 Days |
+| **`Medium`** | Staging environments, corporate blogs, documentation sites | Bi-weekly scans | 30 Days |
+| **`Low`** | Internal sandbox servers, retired test infrastructure | Monthly scans | Best effort |
+
+### 4. Lifecycle Operations & Tactical Re-Scanning
+- **1-Click Deep Audit**: Re-trigger active assessments directly against any registered asset via `POST /api/assets/{id}/scan`, automatically inheriting preferred scan profiles and options.
+- **Perimeter Metric Aggregation**: Rapidly query overall posture statistics with `GET /api/assets/stats`, returning real-time counts across asset types, risk bands, open ports, and active vulnerabilities.
+- **Interactive Asset Inspection Drawer**: In the web UI, clicking any asset opens a slide-out drawer presenting open port matrices, version tags, CVSS severity charts, and CVE references with direct links to NVD and GitHub Security Advisories.
 
 ---
 
