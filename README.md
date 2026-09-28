@@ -18,10 +18,10 @@
 </p>
 
 <p align="center">
-  <a href="#-quick-start"><b>⚡ Quick Start</b></a> •
-  <a href="#-architecture"><b>🏗️ Architecture</b></a> •
+  <a href="#-installation--local-development-setup"><b>⚡ Quick Start</b></a> •
+  <a href="#-architecture--pipeline"><b>🏗️ Architecture</b></a> •
   <a href="#-rest-api-reference"><b>📡 API Reference</b></a> •
-  <a href="#-dual-engine-scanning"><b>⚙️ Dual Engine</b></a> •
+  <a href="#-dual-engine-scanning-mechanics"><b>⚙️ Dual Engine</b></a> •
   <a href="#-passive-reconnaissance--osint-engine"><b>🌐 Passive OSINT</b></a> •
   <a href="#-asset-inventory--attack-surface-management"><b>🏢 Asset Management</b></a> •
   <a href="#-production-deployment"><b>🚢 Docker</b></a>
