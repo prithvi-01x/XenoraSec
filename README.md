@@ -449,41 +449,85 @@ Modern organizations deploy services across hundreds of ephemeral subdomains tha
 
 - **Certificate Transparency (CT) Log Mining**:
   - Connects to public Certificate Transparency logs via the crt.sh REST API (`https://crt.sh/?q=%.{domain}&output=json`).
-  - Utilizes exponential backoff with randomized jitter to handle sporadic upstream load shedding and rate limits without failing the user's recon request.
+  - Utilizes exponential backoff with randomized jitter ($\Delta t = 2^{\text{attempt}} + \text{rand}(0.1, 0.8)$) across 3 retry attempts to handle sporadic upstream load shedding without failing the user's recon request.
 - **SAN & Wildcard Normalization Engine**:
   - Extracts both `common_name` and multi-line `name_value` Subject Alternative Name (SAN) fields.
   - Strips leading wildcards (`*.internal.example.com` $\to$ `internal.example.com`), URI schemes (`https://`), trailing slashes, and port specifications.
   - Enforces strict target-domain boundary filtering, discarding unrelated domain certificates that frequently share multi-tenant SAN entries.
   - De-duplicates hostnames while annotating their verified discovery sources (`crt.sh`, `passive_dns`).
-- **Passive DNS Fallback Provider**:
-  - When crt.sh experiences downtime, timeouts, or transient 502 Bad Gateway responses, the engine automatically falls back to secondary passive DNS queries (HackerTarget / Cloudflare DoH historical name records).
+- **Cloudflare DNS-over-HTTPS (DoH) Resilient Resolver**:
+  - When crt.sh experiences downtime or in locked-down environments where egress UDP port 53 is blocked, the engine routes queries to Cloudflare DoH (`https://cloudflare-dns.com/dns-query` with `Accept: application/dns-json`).
+  - Implements DNS response code validation (`NOERROR`, `NXDOMAIN`, `SERVFAIL`).
 - **Asynchronous DNS Resolution & IP Mapping**:
-  - If `resolve_subdomains` is enabled, an asynchronous worker pool leverages `dnspython` to query A and AAAA records across all discovered subdomains concurrently.
+  - If `resolve_subdomains` is enabled, an asynchronous worker pool leverages `dnspython` to query A and AAAA records across all discovered subdomains concurrently (`asyncio.Semaphore(20)`).
   - Maps live IPv4/IPv6 addresses to each subdomain record.
   - Accurately tracks resolution status (`is_resolvable: true/false`), allowing analysts to immediately distinguish active infrastructure from dead DNS tombstones or stale CNAME takeover candidates.
 
-### 4. DNS Topology & Mail Security Posture Analysis
+---
 
-DNS records define the routing backbone, hosting infrastructure, and email authenticity of a target organization. XenoraSec's `DNSResolver` performs automated multi-record extraction and email spoofing risk calculation:
+### 4. DNS Topology, RDAP Referrals & Mail Posture Analysis
 
-| Record Type | Assessment Focus | Security Significance |
+DNS records define the routing backbone, hosting infrastructure, and email authenticity of a target organization. XenoraSec's `DNSResolver` performs automated multi-record extraction, RDAP IP/ASN routing correlation, and email spoofing risk calculation:
+
+| Record Type | Assessment Focus | Security Significance & Audit Invariant |
 | :--- | :--- | :--- |
 | **A / AAAA** | Direct host IP resolution (IPv4 & IPv6) | Uncovers dual-stack exposure and Origin IP addresses behind CDNs |
 | **CNAME** | Canonical name routing & CDN aliases | Pinpoints dangling CNAME records vulnerable to Subdomain Takeover |
 | **MX** | Mail Exchanger priority and gateways | Identifies mail providers (Google Workspace, Microsoft 365, Proofpoint) |
 | **TXT** | Verification tokens & security policies | Discloses domain ownership, site-verification tokens, SPF/DMARC policies |
-| **NS** | Authoritative Nameservers | Reveals DNS providers (Cloudflare, Route53, Akamai) and glue records |
-| **SOA** | Start of Authority parameters | Zone refresh, retry timers, and primary authoritative contact |
-| **PTR** | Reverse DNS mapping | Correlates IP addresses back to canonical cloud hostnames |
+| **NS** | Authoritative Nameservers | Reveals DNS providers (Cloudflare, Route53, Akamai) and zone glue records |
+| **SOA** | Start of Authority parameters | Zone serials, refresh/retry timers, and primary authoritative administrator |
+| **PTR** | Reverse DNS mapping | Correlates IP addresses back to canonical cloud hostnames and PTR validation |
 
-#### 📬 SPF & DMARC Spoofing Risk Evaluator
-Email spoofing remains a primary attack vector in initial access and CEO fraud. The engine inspects published TXT and `_dmarc.{domain}` records to calculate a deterministic email security score:
-- **SPF Evaluation (RFC 7208)**: Checks for valid `v=spf1` syntax, expands mechanisms (`include:`, `ip4:`, `redirect=`), and evaluates all-mechanisms (`-all` hardfail is compliant; `~all` softfail yields a warning; `?all` neutral or `+all` pass triggers severe spoofing risk).
-  - *Multi-Record PermError Guard*: Identifies duplicate SPF records per RFC 7208 §3.2 and flags domain with a permanent error (`permerror`) as insecure.
-- **DMARC Evaluation (RFC 7489)**: Locates DMARC records, inspects policy enforcement directives (`p=reject` enforces strict rejection; `p=quarantine` isolates unauthenticated mail; `p=none` flags monitoring mode with zero spoofing protection), and checks forensic reporting tags (`rua=`, `ruf=`).
-  - *Subdomain Policy Inheritance*: For subdomains without an explicit `_dmarc.{subdomain}` record, the engine automatically evaluates parent domain records per RFC 7489 §6.6.3 and respects subdomain policy directives (`sp=reject`).
-- **DKIM Selector Hints**: Passively scans TXT records and DNS entries for `v=DKIM1`, `k=rsa`, and `domainkey` hints to determine cryptographic mail signing support.
-- **Composite Mail Security Metric**: Generates a unified 0–100 score and risk classification (`low`, `medium`, `high`) directly in the UI.
+#### 🌐 RDAP Referral Routing & ASN Geolocation
+For discovered IP endpoints, XenoraSec queries the Registration Data Access Protocol (RDAP) via authoritative Regional Internet Registries (RIRs: ARIN, RIPE, APNIC, LACNIC, AFRINIC):
+- **Autonomous System Numbers (ASN)**: Resolves the upstream BGP AS Number (e.g. `AS13335 Cloudflare, Inc.`, `AS16509 Amazon.com`).
+- **IP Network Blocks**: Identifies CIDR allocation blocks (`104.16.0.0/12`) and network registration name (`CLOUDFLARENET`).
+- **Country & Geolocation**: Extracts authoritative country codes for geo-fencing compliance and data sovereignty audits.
+
+#### 📬 SPF (RFC 7208) & DMARC (RFC 7489) Spoofing Risk Evaluator
+Email spoofing remains a primary attack vector in initial access and executive impersonation. XenoraSec performs deep programmatic evaluation against RFC standards:
+
+```mermaid
+flowchart TD
+    TXT["TXT DNS Records"] --> SPF_PARSE["Parse v=spf1 Record"]
+    TXT --> DMARC_PARSE["Query _dmarc.{domain}"]
+
+    subgraph SPFEval ["RFC 7208 SPF Syntax & Rule Engine"]
+        SPF_PARSE --> COUNT_CHECK{"Multiple SPF Records?"}
+        COUNT_CHECK -->|Yes| SPF_FAIL["RFC PermError (Domain Spoofable)"]
+        COUNT_CHECK -->|No| MECH_CHECK{"All Mechanism Qualifier?"}
+        MECH_CHECK -->|"-all"| SPF_PASS["Compliant HardFail (Secure)"]
+        MECH_CHECK -->|"~all"| SPF_WARN["SoftFail Warning (Weak)"]
+        MECH_CHECK -->|"?all" or "+all"| SPF_CRIT["Neutral / Pass (Critical Spoof Risk)"]
+    end
+
+    subgraph DMARCEval ["RFC 7489 DMARC Policy Tree"]
+        DMARC_PARSE --> REC_EXISTS{"DMARC Record Published?"}
+        REC_EXISTS -->|No| PARENT_CHECK{"Parent Domain Has DMARC?"}
+        PARENT_CHECK -->|No| DMARC_NONE["No DMARC (Critical Spoofing Risk)"]
+        PARENT_CHECK -->|Yes (sp=)| DMARC_SUB["Inherit Parent Subdomain Policy"]
+        REC_EXISTS -->|Yes| POL_CHECK{"Inspect p= Policy"}
+        POL_CHECK -->|"p=reject"| DMARC_REJECT["Strict Rejection (High Compliance)"]
+        POL_CHECK -->|"p=quarantine"| DMARC_QUAR["Spam Quarantine (Moderate)"]
+        POL_CHECK -->|"p=none"| DMARC_MONITOR["Monitoring Only (Zero Enforcement)"]
+    end
+
+    SPF_PASS --> METRIC["Composite Mail Security Score (0 - 100)"]
+    SPF_WARN --> METRIC
+    SPF_CRIT --> METRIC
+    DMARC_REJECT --> METRIC
+    DMARC_QUAR --> METRIC
+    DMARC_MONITOR --> METRIC
+    DMARC_NONE --> METRIC
+```
+
+- **RFC 7208 10-Lookup Limit**: Flags SPF records approaching or exceeding the 10 DNS lookup limit (`include`, `a`, `mx`, `ptr`, `exists`), which triggers client-side `PermError` in MTAs.
+- **DKIM Selector Scanning**: Scans common selector prefixes (`google._domainkey`, `k1._domainkey`, `selector1._domainkey`) for cryptographic public key publication.
+- **Unified Mail Security Verdict**: Generates an authoritative classification:
+  - **`High Compliance` (80-100)**: `v=spf1 ... -all` with `p=reject` or `p=quarantine` (`pct=100`) and active forensic reporting (`rua=`).
+  - **`Moderate` (50-79)**: Softfail `~all` or `p=quarantine` with partial rollout.
+  - **`Vulnerable` (0-49)**: Missing DMARC, `p=none` monitoring, or permissive `+all` allowing unauthenticated impersonation.
 
 ---
 
