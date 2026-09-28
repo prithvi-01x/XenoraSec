@@ -2033,6 +2033,58 @@ nuclei -update-templates
 
 ---
 
+### 6. Cloudflare DoH / DNS Resolution Timeouts in Locked Environments
+**Issue**: Passive recon fails to resolve subdomains or throws `dns.resolver.LifetimeTimeout` in enterprise cloud networks where outbound UDP/TCP port 53 is blocked by corporate firewall rules.  
+**Resolution**: XenoraSec automatically falls back to **Cloudflare DNS-over-HTTPS (DoH)** via standard HTTPS port 443 (`https://cloudflare-dns.com/dns-query`). Ensure outbound egress HTTPS (port 443) is permitted in your security group. You can verify DoH connectivity manually:
+```bash
+curl -H "Accept: application/dns-json" "https://cloudflare-dns.com/dns-query?name=example.com&type=A"
+```
+
+---
+
+### 7. Nuclei High Memory Usage or OOM Kills on Wildcard Targets
+**Issue**: Targets returning wildcard HTTP 200 responses for every URI cause Nuclei to trigger thousands of template matches, consuming container RAM.  
+**Resolution**: XenoraSec implements two protective circuit breakers:
+1. `MAX_VULNERABILITIES=1000` (configurable in `.env`) automatically caps total findings ingested per scan.
+2. The stdout ring-buffer automatically halves oldest buffered entries when exceeding 1MB.
+For constrained edge devices (2GB RAM), reduce the concurrency and rate limits:
+```env
+NUCLEI_RATE_LIMIT=25
+MAX_VULNERABILITIES=500
+```
+
+---
+
+### 8. `Nmap: Operation not permitted` or Raw Socket Permission Errors
+**Issue**: Running Nmap inside Docker produces raw packet socket permissions errors (`dnet: Failed to open device`).  
+**Resolution**: XenoraSec strictly enforces unprivileged **TCP Connect** (`-sT`) scans by default, which relies entirely on the kernel `connect()` syscall and requires **zero special privileges or `CAP_NET_RAW` capabilities**. If you observe this error, ensure custom scan profiles do not pass raw socket flags (`-sS`, `-sU`, `-O`) without container capabilities.
+
+---
+
+### 9. WebSocket / SSE Terminal Disconnections Behind Reverse Proxies
+**Issue**: The live terminal console disconnects after 60 seconds with `1006 Abnormal Closure` when running behind Cloudflare or AWS ALB.  
+**Resolution**: Upstream reverse proxies typically terminate idle HTTP/WebSocket connections after 60 seconds. XenoraSec maintains periodic client heartbeat pings. Ensure your Nginx or ingress controller configures extended timeouts:
+```nginx
+proxy_read_timeout 600s;
+proxy_send_timeout 600s;
+```
+If using Cloudflare, ensure **WebSockets** is toggled ON under **Network** settings in the Cloudflare Dashboard.
+
+---
+
+### 10. `crt.sh 502 Bad Gateway` or Transient Upstream Rate Limits
+**Issue**: Passive subdomain enumeration occasionally logs upstream crt.sh errors.  
+**Resolution**: Public Certificate Transparency endpoints experience heavy global traffic. XenoraSec's `ReconEngine` incorporates built-in exponential backoff with randomized jitter ($\Delta t = 2^n + \text{rand}(0.1, 0.8)$) and automatically pivots to secondary passive DNS sources without aborting the audit.
+
+---
+
+### 11. Cold-Start Zombie Process Cleanups after Unscheduled Node Reboot
+**Issue**: Host machine was abruptly rebooted during an active scan, leaving records frozen in `RUNNING` status.  
+**Resolution**: XenoraSec includes an automated cold-start recovery hook in `app/main.py`. During application startup, the engine queries the database for any dangling `RUNNING` scans and transitions them to `FAILED` with the audit reason:
+`"Scan interrupted by system restart or process termination"`.
+
+---
+
 ## 📁 Project Structure
 
 ```
