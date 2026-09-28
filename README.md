@@ -1405,11 +1405,41 @@ docker compose logs -f
 ```
 The application will be accessible at **`http://localhost`** (or your server's IP address on port 80).
 
-#### Architecture Highlights:
-- **Zero-Configuration Reverse Proxy**: Nginx automatically handles API routing, eliminating CORS issues in production environments.
-- **WebSocket Streaming Support**: Full connection upgrade headers (`Upgrade $http_upgrade`, `Connection "Upgrade"`) allow seamless terminal streaming.
+#### Architecture Highlights & Nginx Directives:
+- **Zero-Configuration Reverse Proxy**: Nginx automatically proxies API calls, eliminating CORS preflight overhead and cross-origin security friction in production environments.
+- **WebSocket & SSE Telemetry Upgrades**: Explicitly configured for low-latency streaming without proxy buffer clipping:
+  ```nginx
+  # Dedicated SSE streaming configuration (disables proxy buffering)
+  location ~ ^/api/scan/([a-f0-9\-]+)/stream$ {
+      proxy_pass http://backend:8000;
+      proxy_http_version 1.1;
+      proxy_set_header Connection "";
+      proxy_buffering off;
+      proxy_cache off;
+      chunked_transfer_encoding on;
+      proxy_read_timeout 600s;
+  }
+
+  # Dedicated WebSocket upgrade configuration
+  location ~ ^/api/scan/([a-f0-9\-]+)/ws$ {
+      proxy_pass http://backend:8000;
+      proxy_http_version 1.1;
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+      proxy_read_timeout 3600s;
+  }
+  ```
+- **Static Asset Caching & SPA Routing**: Compiled JavaScript and CSS bundles are served with `Cache-Control "public, max-age=31536000, immutable"`, while `index.html` uses `try_files $uri $uri/ /index.html` with `no-cache` to ensure instant client updates.
 - **Persistent SQLite WAL Volume**: Database data is stored in the Docker volume `scans_data` mounted at `/data/scans.db`, ensuring scan records survive container restarts and updates without corruption.
-- **Production Health Checks**: Both containers feature automated Docker health checks (`/health` endpoint probe) to ensure zero-downtime restarts.
+- **Automated Container Health Probes**:
+  ```yaml
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+    interval: 30s
+    timeout: 5s
+    retries: 3
+    start_period: 10s
+  ```
 - **Development Overrides**: Copy `docker-compose.override.yml.example` to `docker-compose.override.yml` to mount local directories for live reloading during development:
   ```bash
   cp docker-compose.override.yml.example docker-compose.override.yml
