@@ -1487,6 +1487,53 @@ The XenoraSec frontend is built with React 19, TypeScript, and Tailwind CSS to d
 
 ---
 
+## 🎨 Tactical Dark UI Design System
+
+XenoraSec's frontend is crafted using an intentional **Tactical Cyber-Defense Design System**, engineered for high situational awareness during lengthy penetration testing engagements and SOC monitoring shifts.
+
+### 1. Design Tokens & Palette Specifications
+
+| Token Name | HEX Code | CSS Variable | Semantic Usage |
+| :--- | :--- | :--- | :--- |
+| **Canvas Background** | `#090d16` | `--color-canvas` | Deep background canvas preventing eye strain in dark environments |
+| **Card Surface** | `#0e1526` | `--color-surface` | Primary container surface for scan cards, panels, and modal shells |
+| **Elevated Surface** | `#141e34` | `--color-surface-elevated` | Dropdown menus, tooltips, and interactive drawer overlays |
+| **Subtle Border** | `#1e2c47` | `--color-border-subtle` | Structural dividing lines and non-active input borders |
+| **Highlight Border**| `#2e446d` | `--color-border-highlight` | Hover states, active tabs, and focus-ring indicator lines |
+| **Cyber Cyan Accent**| `#00f0ff` | `--color-accent-cyan` | Active scan indicators, primary buttons, and link hovers |
+| **Electric Violet** | `#8b5cf6` | `--color-accent-violet` | AI / Groq LLM intelligence badges and badge borders |
+
+#### Severity Token Color Matrix
+Finding badges, progress indicators, and CVSS indicators use standardized color scales:
+
+```text
+CRITICAL : #ef4444 (Red-500)     │ Background: rgba(239, 68, 68, 0.12)  │ Border: #dc2626
+HIGH     : #f97316 (Orange-500)  │ Background: rgba(249, 115, 22, 0.12) │ Border: #ea580c
+MEDIUM   : #eab308 (Yellow-500)  │ Background: rgba(234, 179, 8, 0.12)  │ Border: #ca8a04
+LOW      : #3b82f6 (Blue-500)    │ Background: rgba(59, 130, 246, 0.12) │ Border: #2563eb
+INFO     : #64748b (Slate-500)   │ Background: rgba(100, 116, 139, 0.12)│ Border: #475569
+```
+
+### 2. Typography Hierarchy
+
+- **Telemetry & Monospace**: `JetBrains Mono`, `Fira Code`, monospace. Applied to targets, IP addresses, CIDR masks, port numbers, CVE signatures, and live terminal stream lines with tabular figures (`font-variant-numeric: tabular-nums`).
+- **Interface & Display**: `Inter`, system-ui, -apple-system, sans-serif. Applied to executive summaries, section headings, and operational controls.
+- **Font Scale**: Standardized from `text-xs` (0.75rem / 12px) for timestamp telemetry to `text-2xl` (1.5rem / 24px) for dashboard KPI counters.
+
+### 3. Core Component Architecture
+
+- **`ScanPanel`**: Target input bar featuring reactive format detection (IP/Domain/URL/CIDR), one-click test target presets, custom port range inputs, and Nmap timing radio buttons.
+- **`LiveTerminal`**: Hardware-accelerated terminal output box with ANSI escape sequence parsing, auto-scroll toggle, source filter chips (`All`, `Nmap`, `Nuclei`), and fullscreen popout modal.
+- **`FindingCard`**: Collapsible vulnerability card featuring CVSS rating pill, CWE badges, template identifier, matched URL path, reproduction curl command snippet, and NVD external references.
+- **`AssetTable`**: High-density ASM table with multi-criteria search, criticality badge selectors, status pills, and slide-out asset detail drawer.
+- **`MetricCard`**: High-contrast KPI tile presenting real-time risk scores, active scan counts, and circular SVG saturation meters.
+
+### 4. Accessibility & Responsive Breakpoints
+- **WCAG 2.1 AA Contrast**: All body text and severity badges maintain at least a $4.5:1$ contrast ratio against the `#0e1526` surface background.
+- **Fluid Layout**: Uses Tailwind CSS breakpoints (`sm: 640px`, `md: 768px`, `lg: 1024px`, `xl: 1280px`). On mobile displays, the sidebar collapses into a gesture-friendly sliding drawer with backdrop blur.
+
+---
+
 ## 🧪 Testing & Quality Assurance
 
 XenoraSec maintains a rigorous automated test suite covering security controls, mathematical modeling, and concurrent operations:
