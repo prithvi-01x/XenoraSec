@@ -1839,11 +1839,13 @@ pytest -v
 pytest --cov=app --cov-report=term-missing --cov-report=html
 
 # Run specific functional test categories
-pytest tests/test_security.py -v       # SSRF & input gate invariants
-pytest tests/test_recon.py -v          # Passive OSINT & RFC 7208/7489 tests
-pytest tests/test_ai_service.py -v     # Michaelis-Menten kinetics & Groq fallback
-pytest tests/test_database.py -v       # SQLite WAL concurrency & busy timeouts
-pytest tests/test_batch_scan.py -v     # CIDR subnet expansion & batch slots
+pytest tests/test_security.py -v         # SSRF & input gate invariants
+pytest tests/test_recon_*.py -v          # Passive OSINT & RFC 7208/7489 tests
+pytest tests/test_asset_*.py -v          # ASM asset inventory & filter tests
+pytest tests/test_ai_service.py -v       # Michaelis-Menten kinetics & Groq fallback
+pytest tests/test_database.py -v         # SQLite WAL concurrency & busy timeouts
+pytest tests/test_batch_scan.py -v       # CIDR subnet expansion & batch slots
+pytest tests/test_reports.py -v          # Multi-format report export generators
 ```
 
 #### Test Suite Inventory & Key Invariants
@@ -1855,9 +1857,10 @@ pytest tests/test_batch_scan.py -v     # CIDR subnet expansion & batch slots
 | **`test_cancellation.py`**| Subprocess Safety | Asserts `process.kill()` executes on `asyncio.CancelledError` and verifies cold-start zombie recovery |
 | **`test_ai_service.py`** | Risk Scoring | Proves exact half-saturation point ($S = 15.0 \implies \text{Score} = 5.0$), asymptotic limits ($S \to \infty \implies 10.0$), and Groq API 10s timeout fallback |
 | **`test_database.py`** | DB Concurrency | Checks `PRAGMA journal_mode=WAL`, 30s busy timeout, and concurrent multi-session read/write without `database is locked` errors |
-| **`test_recon.py`** | Passive OSINT | Verifies crt.sh wildcard stripping, Cloudflare DoH fallback on timeout, RFC 7208 SPF permerror detection, and RFC 7489 DMARC subdomain inheritance |
+| **`test_recon_*.py`** | Passive OSINT | 7 dedicated modules (`crtsh`, `dns`, `fingerprint`, `db`, `routes`, `e2e`, `edge_cases`) verifying wildcard stripping, DoH fallback, RFC 7208 SPF permerror, and RFC 7489 DMARC inheritance |
 | **`test_batch_scan.py`** | CIDR Subnets | Validates `/24` to `/32` host math, rejection of `/16` subnets (HTTP 422), and `asyncio.Semaphore` slot distribution |
-| **`test_assets.py`** | ASM Asset Registry | Proves idempotent upsert from scan, port state updates, vulnerability lifecycle tracking, and cascade deletion integrity |
+| **`test_asset_*.py`** | ASM Asset Registry | Proves idempotent upsert from scan, multi-column search, type/criticality filters, and cascade deletion referential integrity |
+| **`test_reports.py`** | Report Generators | Validates ReportLab PDF vector styling, HTML `@media print` structure, Markdown GFM tables, and CSV triage export flattening |
 | **`test_api.py`** | REST Routes | End-to-end route tests for `/health`, `/queue`, `/history`, and partial retries |
 
 ---
