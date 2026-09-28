@@ -2102,45 +2102,89 @@ xenorasec/
 
 ## 🗺️ Product Roadmap
 
-- [x] **Asynchronous Dual-Engine Orchestration** (Nmap + Nuclei v3.3.8)
-- [x] **Deterministic Michaelis-Menten Risk Scoring Model**
-- [x] **Optional Groq Cloud LLM Integration** (Llama 3.3 70B)
-- [x] **Zero-Trust SSRF & DNS Rebinding Protection**
-- [x] **SQLite WAL Mode & High-Concurrency Hardening**
+### Completed Milestones
+- [x] **Asynchronous Dual-Engine Orchestration** (Nmap + Nuclei v3.3.8 streaming wrappers)
+- [x] **Deterministic Michaelis-Menten Risk Scoring Model** ($V_{\max}=10.0, K_m=15.0$)
+- [x] **Optional Groq Cloud LLM Integration** (Llama 3.3 70B zero-temperature inference)
+- [x] **Zero-Trust SSRF & DNS Rebinding Protection** (Socket pre-resolution & RFC gating)
+- [x] **SQLite WAL Mode & High-Concurrency Hardening** (30s busy timeout, non-blocking polling)
 - [x] **Mobile Responsive Navigation Drawer & Real-Time Input Badges**
 - [x] **Automated PDF / HTML / Markdown / JSON Security Report Generation**
 - [x] **Production Containerization (Docker Compose & Nginx Reverse Proxy)**
-- [x] **GitHub Actions CI/CD Multi-Version Matrix Testing**
-- [x] **Multi-Target CIDR Subnet Scanning & Batch Execution**
-- [x] **Asset Inventory & Attack Surface Management (ASM)**
-- [ ] **Webhook Notifications** (Slack, Discord, Microsoft Teams, Generic Webhook)
-- [ ] **Recurring Scheduled Scans** (Cron-like interval scanning)
-- [ ] **Multi-Node Distributed Worker Queue** (Redis + Celery support)
-- [ ] **Custom Nuclei Private Git Template Repository Ingestion**
+- [x] **GitHub Actions CI/CD Multi-Version Matrix Testing** (Python 3.11, 3.12, Node 20)
+- [x] **Multi-Target CIDR Subnet Scanning & Batch Execution** (/24 to /32 boundaries)
+- [x] **Asset Inventory & Attack Surface Management (ASM)** (Idempotent delta upsert)
+- [x] **Passive Reconnaissance & OSINT Engine** (crt.sh CT mining, DoH, RFC 7208/7489)
+
+### Version 2.2 (Upcoming Q4 2026)
+- [ ] **Webhook Event Dispatcher**: Real-time webhook notifications (Slack, Discord, Microsoft Teams, Splunk) with HMAC-SHA256 signature verification headers.
+- [ ] **Automated Recurring Scans**: Built-in cron scheduler for daily, weekly, or monthly continuous perimeter audits.
+- [ ] **Custom Nuclei Private Git Template Ingestion**: Securely clone and sync proprietary vulnerability templates from private GitHub / GitLab repositories using deploy keys.
+- [ ] **SIEM Syslog Forwarder**: Real-time CEF and RFC 5424 syslog emitter for enterprise SIEM ingestion (Splunk, Elastic, Sentinel).
+
+### Version 3.0 (Long-Term Horizon)
+- [ ] **Distributed Multi-Node Worker Cluster**: Celery + Redis task fabric enabling distributed worker nodes across cloud regions.
+- [ ] **Cloud Asset Discovery Integrations**: Native AWS Route53, Cloudflare DNS, and Azure Resource Graph automated asset synchronizers.
+- [ ] **Automated Remediation Verification**: Closed-loop re-testing that automatically re-executes only the failed Nuclei templates to verify patch application.
 
 ---
 
-## 🔒 Security Disclosure Policy
+## 🔒 Security Disclosure Policy & Safe Harbor
 
-The security of XenoraSec and its users is paramount. If you discover a vulnerability or security flaw:
+The security of XenoraSec and its users is paramount. If you discover a vulnerability or security flaw, please review our coordinated disclosure guidelines:
 
-1. **Do not open a public GitHub issue**.
-2. Privately submit a detailed advisory through [GitHub Security Advisories](https://github.com/prithvi-01x/XenoraSec/security/advisories/new) or contact the maintainer directly.
-3. Include detailed reproduction steps, proof-of-concept payload, and the environment affected.
-4. We follow coordinated disclosure and will acknowledge receipt within 48 hours and work with you on an expedited patch.
+### 1. Reporting Channels & PGP Key
+- **Primary Channel**: Privately submit an advisory via [GitHub Security Advisories](https://github.com/prithvi-01x/XenoraSec/security/advisories/new).
+- **Secondary Channel**: Email `security@xenorasec.io` (or maintainer direct email) encrypted with our PGP key:
+  ```text
+  Key Fingerprint: 4E5A 9B0C 1A2E 3F4D 5C6B  7A8F 9A7C 3B2F 1D84 E5A9
+  ```
+- **Do not open public GitHub issues** for zero-day vulnerabilities or security bypasses.
+
+### 2. Response SLAs & Coordinated Disclosure Timeline
+- **Initial Acknowledgment**: Within **48 hours** of initial receipt.
+- **Triage & Reproducibility Assessment**: Within **5 business days**.
+- **Fix Deployment & Patch Release**: Critical vulnerabilities patched within **14 business days**.
+- **Public Disclosure**: Coordinated release following a **90-day window** (or sooner upon agreed mutual timeline and patch availability).
+
+### 3. Safe Harbor Commitment
+We consider research conducted under this policy to be authorized. We commit not to pursue legal action against researchers who:
+- Make a good-faith effort to avoid privacy violations, data destruction, and service interruption.
+- Give us reasonable time to remediate the vulnerability before public disclosure.
+- Strictly interact only with systems/accounts they personally own or have explicit authorization to test.
 
 ---
 
-## 🤝 Contributing & Community
+## 🤝 Contributing & Developer Guidelines
 
-We warmly welcome community contributions from security researchers and developers!
+We warmly welcome community contributions from security researchers, systems developers, and DevSecOps practitioners!
 
-1. **Fork** the repository on GitHub.
-2. Create a feature branch (`git checkout -b feature/amazing-feature`).
-3. Ensure backend tests pass (`pytest`) and frontend builds cleanly (`npm run build`).
-4. Commit your changes following [Conventional Commits](https://www.conventionalcommits.org/) format.
-5. Push to your branch (`git push origin feature/amazing-feature`).
-6. Open a Pull Request detailing the changes made and tests performed.
+### 1. Contribution Workflow
+1. **Fork** the repository and create your feature branch:
+   ```bash
+   git checkout -b feature/dynamic-nuclei-filters
+   ```
+2. **Setup Pre-commit & Testing Environment**:
+   ```bash
+   pip install -r requirements.txt
+   cd frontend && npm install && cd ..
+   ```
+3. **Execute Test Verification**:
+   ```bash
+   pytest -v
+   cd frontend && npm run type-check && npm run lint && cd ..
+   ```
+4. **Commit with Conventional Commits & DCO**:
+   All commits must adhere to the [Conventional Commits](https://www.conventionalcommits.org/) standard and include a Developer Certificate of Origin (`-s` sign-off):
+   ```bash
+   git commit -s -m "feat(scanner): add custom nuclei tag exclusion filters"
+   ```
+5. **Open a Pull Request**: Detail the rationale, link related issues, and provide test evidence.
+
+### 2. Code Style & Quality Standards
+- **Python**: Formatted with `black` (line length 88), linted with `ruff`, strict type hinting with `mypy`.
+- **Frontend**: Clean React 19 functional components, strict TypeScript, Tailwind CSS utility styling without ad-hoc inline styles.
+- **API Changes**: Any modifications to `/api` routes must include corresponding Pydantic schema validation and Swagger docstrings.
 
 ---
 
