@@ -1070,13 +1070,22 @@ All error responses emitted by the platform conform to the standard RFC 7807 pro
 }
 ```
 
-### API Usage Examples
+## 💻 cURL Command Cookbook
 
-#### 1. Launch a New Scan
+A comprehensive collection of copy-pasteable cURL commands and real-world JSON response payloads covering every endpoint in the XenoraSec API.
+
+#### 1. Launch a New Scan (Standard or Custom Profile)
 ```bash
+# Standard default scan against target
 curl -X POST "http://localhost:8000/api/scan/" \
      -H "Content-Type: application/json" \
-     -d '{"target": "example.com"}'
+     -d '{
+       "target": "example.com",
+       "scan_profile": "custom",
+       "port_range": "80,443,8080,8443",
+       "custom_tags": "cve,misconfig,takeover",
+       "timing_template": "T4"
+     }'
 ```
 **Response (`200 OK`):**
 ```json
@@ -1088,11 +1097,11 @@ curl -X POST "http://localhost:8000/api/scan/" \
 }
 ```
 
-#### 2. Query Scan Results & Risk Intelligence
+#### 2. Query Scan Results & Complete Risk Intelligence
 ```bash
 curl -s "http://localhost:8000/api/scan/results/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d"
 ```
-**Response Sample:**
+**Response (`200 OK`):**
 ```json
 {
   "scan_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
@@ -1100,66 +1109,75 @@ curl -s "http://localhost:8000/api/scan/results/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3d
   "status": "completed",
   "risk_score": 6.84,
   "duration": 42.18,
-  "summary": {
-    "total_vulnerabilities": 3,
-    "open_ports": 2,
-    "severity_distribution": {
-      "critical": 0,
-      "high": 1,
-      "medium": 2,
-      "low": 0,
-      "info": 0
-    },
-    "risk_level": "high"
+  "created_at": "2026-09-28T13:40:00Z",
+  "open_ports": [
+    {"port": 80, "protocol": "tcp", "service": "http", "product": "nginx", "version": "1.24.0"},
+    {"port": 443, "protocol": "tcp", "service": "ssl/http", "product": "nginx", "version": "1.24.0"}
+  ],
+  "vulnerabilities": [
+    {
+      "template_id": "cve-2023-46805",
+      "name": "Ivanti Connect Secure Auth Bypass",
+      "severity": "critical",
+      "cvss_score": 9.8,
+      "cwe_id": "CWE-287",
+      "matched_at": "https://example.com/api/v1/totp/user-backup-code",
+      "curl_command": "curl -X POST https://example.com/api/v1/totp/user-backup-code"
+    }
+  ],
+  "ai_analysis": {
+    "model": "llama-3.3-70b-versatile",
+    "summary": "Critical authentication bypass detected on public gateway; immediate patching recommended.",
+    "attack_paths": ["Public URI /api/v1/totp -> Remote Pre-Auth Access"]
   }
 }
 ```
 
-#### 3. Retry a Partial or Failed Scan
+#### 3. Real-Time Terminal Streaming (SSE & WebSocket)
+```bash
+# Server-Sent Events (SSE) live stream
+curl -N "http://localhost:8000/api/scan/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d/stream"
+
+# Interactive WebSocket console stream
+wscat -c "ws://localhost:8000/api/scan/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d/ws"
+```
+**SSE Stream Chunk Sample:**
+```text
+data: {"source":"nmap","line":"Discovered open port 443/tcp on 93.184.216.34","level":"info"}
+
+data: {"source":"nuclei","line":"[cve-2023-46805] [critical] https://example.com/api/v1/totp/user-backup-code","level":"warning"}
+```
+
+#### 4. Cancel a Running Scan
+```bash
+curl -X POST "http://localhost:8000/api/scan/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d/cancel"
+```
+**Response (`200 OK`):**
+```json
+{
+  "scan_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+  "status": "cancelled",
+  "message": "Scan cancelled by user request"
+}
+```
+
+#### 5. Retry a Failed or Partial Scan
 ```bash
 curl -X POST "http://localhost:8000/api/scan/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d/retry"
 ```
-
-#### 4. Live Terminal Streaming (SSE & WebSocket)
-Stream backend scanner stdout, port discoveries, and vulnerability matches in real-time:
-```bash
-# Server-Sent Events (SSE)
-curl -N "http://localhost:8000/api/scan/{scan_id}/stream"
-
-# WebSocket live console stream
-wscat -c "ws://localhost:8000/api/scan/{scan_id}/ws"
+**Response (`200 OK`):**
+```json
+{
+  "scan_id": "3f81e2b1-910a-4c22-b5e1-89d123456789",
+  "parent_scan_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+  "status": "running",
+  "message": "Scan re-queued successfully"
+}
 ```
 
-#### 5. Generate & Download Professional Reports
-Export publication-ready security assessments in PDF, HTML, Markdown, or JSON:
+#### 6. Multi-Target & CIDR Batch Operations
 ```bash
-# Publication PDF report (ReportLab)
-curl -O -J "http://localhost:8000/api/scan/{scan_id}/report?format=pdf&report_type=technical"
-
-# Interactive offline HTML report with print-to-PDF styles
-curl -O -J "http://localhost:8000/api/scan/{scan_id}/report?format=html&report_type=technical"
-
-# GitHub-flavored Markdown report
-curl -O -J "http://localhost:8000/api/scan/{scan_id}/report?format=markdown&report_type=executive"
-
-# Machine-readable JSON export
-curl -O -J "http://localhost:8000/api/scan/{scan_id}/report?format=json&report_type=technical"
-```
-
-#### 6. Scan Profiles & Nuclei Template Catalog
-Query built-in scan presets (Quick Recon, Full Web Audit, Network Discovery, Custom) and template tags:
-```bash
-# List available scan profiles
-curl "http://localhost:8000/api/scan/profiles"
-
-# List available Nuclei template categories and tags
-curl "http://localhost:8000/api/scan/templates"
-```
-
-#### 7. Multi-Target & CIDR Batch Operations
-Launch mass security audits across subnets or host lists, and monitor aggregate telemetry:
-```bash
-# Launch a batch scan for a CIDR block and extra hosts
+# Ingest CIDR block and extra hosts into batch queue
 curl -X POST "http://localhost:8000/api/scan/batch" \
      -H "Content-Type: application/json" \
      -d '{
@@ -1167,36 +1185,74 @@ curl -X POST "http://localhost:8000/api/scan/batch" \
        "scan_profile": "quick",
        "batch_name": "Perimeter Audit Q3"
      }'
-
-# Query batch progress and overall composite risk
-curl -s "http://localhost:8000/api/scan/batch/{batch_id}"
+```
+**Response (`200 OK`):**
+```json
+{
+  "batch_id": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+  "total_targets": 7,
+  "message": "Batch scan registered with 7 targets",
+  "targets": ["192.168.1.1", "192.168.1.2", "192.168.1.3", "192.168.1.4", "192.168.1.5", "192.168.1.6", "api.example.com"]
+}
 ```
 
-#### 8. Asset Inventory Management API
-Inspect, filter, update criticality, and trigger automated re-scans across persistent assets:
+```bash
+# Poll batch progress and aggregate mean risk score
+curl -s "http://localhost:8000/api/scan/batch/a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"
+```
+**Response (`200 OK`):**
+```json
+{
+  "batch_id": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+  "batch_name": "Perimeter Audit Q3",
+  "status": "running",
+  "total": 7,
+  "completed": 5,
+  "running": 2,
+  "failed": 0,
+  "pending": 0,
+  "mean_risk_score": 3.82
+}
+```
+
+#### 7. Generate & Download Multi-Format Reports
+```bash
+# Download publication PDF
+curl -O -J "http://localhost:8000/api/scan/{scan_id}/report?format=pdf&report_type=technical"
+
+# Download standalone interactive HTML
+curl -O -J "http://localhost:8000/api/scan/{scan_id}/report?format=html&report_type=technical"
+
+# Download GitHub Markdown summary
+curl -O -J "http://localhost:8000/api/scan/{scan_id}/report?format=markdown&report_type=executive"
+
+# Export flat CSV findings
+curl -O -J "http://localhost:8000/api/scan/{scan_id}/report?format=csv&report_type=technical"
+```
+
+#### 8. Asset Inventory Management (ASM)
 ```bash
 # Query paginated inventory with filters
 curl -s "http://localhost:8000/api/assets?criticality=high&status=active&limit=10"
 
-# Fetch aggregated attack surface statistics
+# Query attack surface posture KPI metrics
 curl -s "http://localhost:8000/api/assets/stats"
 
-# Inspect detailed asset ports and active CVE vulnerabilities
-curl -s "http://localhost:8000/api/assets/{asset_id}"
+# Inspect specific asset with linked ports and active CVEs
+curl -s "http://localhost:8000/api/assets/42"
 
-# Update asset criticality rating and operational notes
-curl -X PATCH "http://localhost:8000/api/assets/{asset_id}" \
+# Update asset criticality rating and notes
+curl -X PATCH "http://localhost:8000/api/assets/42" \
      -H "Content-Type: application/json" \
-     -d '{"criticality": "critical", "notes": "Primary authentication gateway"}'
+     -d '{"criticality": "critical", "notes": "Production API Ingress Gateway"}'
 
-# Trigger an immediate re-scan of an asset
-curl -X POST "http://localhost:8000/api/assets/{asset_id}/scan"
+# Trigger an immediate automated re-scan of an asset
+curl -X POST "http://localhost:8000/api/assets/42/scan"
 ```
 
 #### 9. Passive Reconnaissance & OSINT API
-Execute autonomous OSINT discovery, inspect DNS/mail posture, and bulk-import discovered subdomains into the Asset Inventory:
 ```bash
-# Run passive OSINT assessment on a domain
+# Launch passive OSINT discovery on domain
 curl -X POST "http://localhost:8000/api/recon/" \
      -H "Content-Type: application/json" \
      -d '{
@@ -1207,13 +1263,13 @@ curl -X POST "http://localhost:8000/api/recon/" \
        "include_tech_stack": true
      }'
 
-# Retrieve cached or latest recon assessment for a domain
+# Retrieve cached OSINT assessment dossier for domain
 curl -s "http://localhost:8000/api/recon/example.com"
 
-# Query paginated recon history records
+# Query historical OSINT audits
 curl -s "http://localhost:8000/api/recon/history?limit=10"
 
-# Bulk import discovered subdomains into Asset Inventory
+# Bulk import discovered subdomains directly into Asset Inventory
 curl -X POST "http://localhost:8000/api/recon/example.com/import-to-assets" \
      -H "Content-Type: application/json" \
      -d '{
@@ -1221,6 +1277,17 @@ curl -X POST "http://localhost:8000/api/recon/example.com/import-to-assets" \
        "criticality": "high",
        "tags": ["recon-import", "perimeter"]
      }'
+```
+
+#### 10. Concurrency Queue & Liveness Probe
+```bash
+# Query current concurrency slot usage
+curl -s "http://localhost:8000/api/scan/queue"
+# Response: {"active_scans": 2, "max_concurrent_scans": 3, "pending_queue": 1}
+
+# Liveness probe
+curl -s "http://localhost:8000/health"
+# Response: {"status": "ok", "database": "connected", "scanner_ready": true}
 ```
 
 ---
