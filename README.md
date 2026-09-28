@@ -1029,33 +1029,46 @@ When a PostgreSQL connection string is detected, XenoraSec automatically activat
 
 ## 📡 REST API Reference
 
-XenoraSec provides a clean, fully documented OpenAPI (Swagger) interface accessible at `/docs`.
+XenoraSec provides a clean, fully documented OpenAPI (Swagger) interface accessible at `/docs` and ReDoc at `/redoc`.
 
 ### Core Endpoints
 
-| Method | Endpoint | Description | Status Codes |
-| :--- | :--- | :--- | :--- |
-| `POST` | `/api/scan/` | Initiate an individual security scan | `200`, `400`, `429`, `503` |
-| `POST` | `/api/scan/batch` | Queue batch scan across multi-targets or CIDR subnets | `200`, `400`, `429`, `503` |
-| `GET` | `/api/scan/batch/{batch_id}` | Poll batch execution telemetry & aggregated score | `200`, `404` |
-| `GET` | `/api/scan/results/{scan_id}` | Fetch full scan results & findings | `200`, `400`, `404` |
-| `GET` | `/api/scan/history` | Paginated historical scan records (supports batch filter) | `200`, `400` |
-| `POST` | `/api/scan/{scan_id}/retry` | Retry a failed, timeout, or partial scan | `200`, `400`, `404`, `503` |
-| `POST` | `/api/scan/{scan_id}/cancel` | Abort a running background scan | `200`, `400`, `404` |
-| `DELETE` | `/api/scan/{scan_id}` | Permanently delete a scan result | `200`, `400`, `404` |
-| `GET` | `/api/scan/queue` | Query active scan concurrency slots | `200` |
-| `POST` | `/api/scan/cleanup` | Purge scans older than N days (`secret` req) | `200`, `403`, `503` |
-| `GET` | `/api/assets` | Paginated Asset Inventory with keyword & criticality filters | `200` |
-| `GET` | `/api/assets/stats` | Perimeter ASM KPI metrics & severity distribution | `200` |
-| `GET` | `/api/assets/{id}` | Inspect asset with open service ports & active CVEs | `200`, `404` |
-| `PATCH` | `/api/assets/{id}` | Update asset criticality, operational status, and notes | `200`, `400`, `404` |
-| `DELETE` | `/api/assets/{id}` | Delete asset and cascade remove linked ports/vulns | `200`, `404` |
-| `POST` | `/api/assets/{id}/scan` | Trigger automated re-scan of an existing asset | `200`, `404`, `503` |
-| `POST` | `/api/recon/` | Run passive OSINT reconnaissance against target domain | `200`, `400`, `500` |
-| `GET` | `/api/recon/{domain}` | Retrieve latest passive recon audit report for domain | `200`, `404` |
-| `GET` | `/api/recon/history` | List historical OSINT reconnaissance audits (paginated) | `200` |
-| `POST` | `/api/recon/{domain}/import-to-assets` | Bulk-import discovered subdomains directly into Asset Inventory | `200`, `400`, `404` |
-| `GET` | `/health` | Liveness & database connection health | `200`, `503` |
+| Method | Endpoint | Parameters & Body Schema | Description | Status Codes |
+| :--- | :--- | :--- | :--- | :--- |
+| `POST` | `/api/scan/` | JSON: `{target, scan_profile?, port_range?, custom_tags?, timing_template?}` | Initiate an individual security scan | `200 OK`, `400 Bad Request`, `422 Unprocessable`, `429 Too Many Requests`, `503 Service Unavailable` |
+| `POST` | `/api/scan/batch` | JSON: `{raw_targets, scan_profile?, batch_name?}` | Ingest and queue batch audit across host lists or CIDR blocks | `200 OK`, `400 Bad Request`, `422 Unprocessable`, `429 Too Many Requests`, `503 Service Unavailable` |
+| `GET` | `/api/scan/batch/{batch_id}` | Path: `batch_id` (UUID) | Poll live batch progress counters, per-scan status, and aggregate mean risk score | `200 OK`, `404 Not Found` |
+| `GET` | `/api/scan/results/{scan_id}` | Path: `scan_id` (UUID) | Fetch full findings dossier: open ports, CVEs, CVSS scores, risk metrics | `200 OK`, `400 Bad Request`, `404 Not Found` |
+| `GET` | `/api/scan/{scan_id}/stream` | Path: `scan_id` (UUID) | Real-time Server-Sent Events (SSE) stream (`text/event-stream`) of scanner output | `200 OK`, `404 Not Found` |
+| `WS` | `/api/scan/{scan_id}/ws` | Path: `scan_id` (UUID) | Interactive bi-directional WebSocket console for real-time terminal output | `101 Switching Protocols`, `404 Not Found` |
+| `GET` | `/api/scan/{scan_id}/report` | Query: `format` (`pdf`\|`html`\|`markdown`\|`json`\|`csv`), `report_type` (`technical`\|`executive`) | Compile and download audit security report with disposition attachment | `200 OK`, `400 Bad Request`, `404 Not Found` |
+| `GET` | `/api/scan/history` | Query: `limit=50`, `offset=0`, `status?`, `batch_id?` | Paginated historical scan ledger with filtering capabilities | `200 OK`, `400 Bad Request` |
+| `POST` | `/api/scan/{scan_id}/retry` | Path: `scan_id` (UUID) | Re-queue a failed, partial, or timed-out scan with original options | `200 OK`, `400 Bad Request`, `404 Not Found`, `503 Service Unavailable` |
+| `POST` | `/api/scan/{scan_id}/cancel` | Path: `scan_id` (UUID) | Send immediate SIGKILL termination to active subprocess workers | `200 OK`, `400 Bad Request`, `404 Not Found` |
+| `DELETE`| `/api/scan/{scan_id}` | Path: `scan_id` (UUID) | Permanently purge a scan record and its associated finding cache | `200 OK`, `400 Bad Request`, `404 Not Found` |
+| `GET` | `/api/scan/profiles` | None | Retrieve pre-configured scan profiles (Quick, Full Web, Network Discovery) | `200 OK` |
+| `GET` | `/api/scan/templates` | None | List available Nuclei v3 template categories, severity tags, and count | `200 OK` |
+| `GET` | `/api/scan/queue` | None | Query current concurrency slot occupancy and pending scan queue size | `200 OK` |
+| `POST` | `/api/scan/cleanup` | JSON: `{secret, days_older_than}` | Administrative maintenance route to purge scan records older than N days | `200 OK`, `403 Forbidden`, `503 Unavailable` |
+| `GET` | `/api/assets` | Query: `limit=50`, `offset=0`, `criticality?`, `status?`, `search?` | Query ASM asset inventory registry with multi-column filtering | `200 OK` |
+| `GET` | `/api/assets/stats` | None | Retrieve high-level attack surface posture metrics, KPI counts, severity breakdown | `200 OK` |
+| `GET` | `/api/assets/{id}` | Path: `id` (Integer) | Inspect specific asset entity with linked open ports and confirmed CVE findings | `200 OK`, `404 Not Found` |
+| `PATCH` | `/api/assets/{id}` | Path: `id`, JSON: `{criticality?, status?, notes?, tags?}` | Update asset business criticality rating, operational status, or custom tags | `200 OK`, `400 Bad Request`, `404 Not Found` |
+| `DELETE`| `/api/assets/{id}` | Path: `id` (Integer) | Delete asset entity with cascading removal of linked ports and vulnerabilities | `200 OK`, `404 Not Found` |
+| `POST` | `/api/assets/{id}/scan` | Path: `id` (Integer) | Launch automated re-scan against registered asset inheriting default profile | `200 OK`, `404 Not Found`, `503 Service Unavailable` |
+| `POST` | `/api/recon/` | JSON: `{domain, include_subdomains, resolve_subdomains, include_dns, include_tech_stack}` | Initiate asynchronous passive OSINT reconnaissance audit | `200 OK`, `400 Bad Request`, `500 Server Error` |
+| `GET` | `/api/recon/{domain}` | Path: `domain` (FQDN string) | Retrieve most recent cached or completed OSINT assessment dossier for domain | `200 OK`, `404 Not Found` |
+| `GET` | `/api/recon/history` | Query: `limit=20`, `offset=0` | Paginated OSINT audit history records with discovery source breakdown | `200 OK` |
+| `POST` | `/api/recon/{domain}/import-to-assets` | Path: `domain`, JSON: `{subdomains[], criticality?, tags?}` | Bulk-import discovered OSINT subdomains directly into Asset Inventory | `200 OK`, `400 Bad Request`, `404 Not Found` |
+| `GET` | `/health` | None | Application liveness probe and database connection health verification | `200 OK`, `503 Service Unavailable` |
+
+#### Standard API Error Envelope Format
+All error responses emitted by the platform conform to the standard RFC 7807 problem details specification:
+```json
+{
+  "detail": "Target '192.168.1.1' resolves to private IP address (192.168.1.1), which is prohibited by server policy (ALLOW_PRIVATE_IP_SCANNING=False)."
+}
+```
 
 ### API Usage Examples
 
