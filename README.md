@@ -1294,33 +1294,103 @@ curl -s "http://localhost:8000/health"
 
 ## ⚙️ Environment Configuration
 
-All settings in XenoraSec can be configured via environment variables or specified inside a `.env` file in the project root:
+All backend operational settings in XenoraSec can be configured via environment variables or declared inside a `.env` file in the project root. The application validates configurations at boot time using **Pydantic Settings**.
 
-| Variable | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| **`APP_NAME`** | `string` | `"XenoraSec"` | Branding identifier |
-| **`DEBUG`** | `boolean` | `false` | Verbose FastAPI debug logs |
-| **`DATABASE_URL`** | `string` | `sqlite+aiosqlite:///./scans.db` | SQLite or PostgreSQL URI |
-| **`MAX_CONCURRENT_SCANS`** | `integer` | `3` | Maximum simultaneous active scans |
-| **`GLOBAL_SCAN_TIMEOUT`** | `integer` | `600` | Hard timeout (seconds) per scan |
-| **`NMAP_TIMEOUT`** | `integer` | `180` | Maximum seconds for Nmap phase |
-| **`NMAP_TIMING`** | `string` | `"T4"` | Nmap timing template (`T1`-`T5`) |
-| **`NUCLEI_TIMEOUT`** | `integer` | `300` | Maximum seconds for Nuclei phase |
-| **`NUCLEI_RATE_LIMIT`** | `integer` | `50` | Nuclei HTTP requests per second |
-| **`MAX_VULNERABILITIES`**| `integer` | `1000` | Safety limit to prevent memory bloat |
-| **`ALLOW_LOCALHOST_SCANNING`**| `boolean` | `false` | Enable/disable scanning 127.0.0.1 |
-| **`ALLOW_PRIVATE_IP_SCANNING`**| `boolean` | `false` | Enable/disable RFC 1918 subnets |
-| **`RATE_LIMIT_ENABLED`** | `boolean` | `true` | Enable client IP rate limiting |
-| **`RATE_LIMIT_PER_MINUTE`**| `integer` | `10` | Requests allowed per minute per IP |
-| **`RATE_LIMIT_PER_HOUR`**| `integer` | `100` | Requests allowed per hour per IP |
-| **`TRUST_PROXY_HEADERS`**| `boolean` | `false` | Enable when behind reverse proxies |
-| **`ALLOWED_ORIGINS`** | `string` | `http://localhost:5173,...` | Allowed CORS origins (comma separated)|
-| **`MAX_CIDR_PREFIX`** | `integer` | `24` | Maximum allowable CIDR subnet mask (prevents wide subnet scans) |
-| **`MAX_BATCH_TARGETS`** | `integer` | `256` | Maximum total target count accepted per batch submission |
-| **`BATCH_CONCURRENCY`** | `integer` | `3` | Worker concurrency slots allocated for batch scans |
-| **`GROQ_API_KEY`** | `string` | `null` | Groq Cloud API key for Llama 3.3 LLM |
-| **`GROQ_MODEL`** | `string` | `"llama-3.3-70b-versatile"` | Target Groq model identifier |
-| **`CLEANUP_SECRET`** | `string` | `null` | Required secret for `/api/scan/cleanup`|
+### 1. Categorized Configuration Reference
+
+#### 🖥️ Server & Network Ingress
+| Variable | Type | Default | Validation & Permitted Values | Production Recommendation | Security Implication |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`APP_NAME`** | `string` | `"XenoraSec"` | Any non-empty string | `"XenoraSec Enterprise"` | Affects report headers and API schemas |
+| **`DEBUG`** | `boolean` | `false` | `true`, `false`, `1`, `0` | `false` | When true, enables verbose stack traces in HTTP responses |
+| **`ALLOWED_ORIGINS`** | `string` | `http://localhost:5173,...` | Comma-separated URI strings | Strict production FQDN | Restricts cross-origin browser requests |
+| **`TRUST_PROXY_HEADERS`**| `boolean`| `false` | `true`, `false` | `true` (when behind Nginx/Cloudflare) | Protects against `X-Forwarded-For` spoofing |
+| **`TRUSTED_PROXIES`** | `string` | `"127.0.0.1"` | Comma-separated IP addresses | Direct upstream proxy IPs | Restricts which remote sockets can supply client IPs |
+
+#### 🗄️ Persistence & Database Layer
+| Variable | Type | Default | Validation & Permitted Values | Production Recommendation | Security Implication |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`DATABASE_URL`** | `string` | `sqlite+aiosqlite:///./scans.db` | Valid SQLAlchemy async URI | PostgreSQL with asyncpg | Dictates storage backend & concurrency scale |
+| **`DB_POOL_SIZE`** | `integer`| `5` | Integer $\ge 1$ | `10` to `20` (Postgres) | Manages database connection pool ceiling |
+| **`DB_MAX_OVERFLOW`** | `integer`| `10` | Integer $\ge 0$ | `20` | Maximum surge connections permitted |
+
+#### ⚙️ Scanner Timing & Resource Throttling
+| Variable | Type | Default | Validation & Permitted Values | Production Recommendation | Security Implication |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`MAX_CONCURRENT_SCANS`** | `integer`| `3` | `1` to `32` | `3` to `8` (based on CPU/RAM) | Prevents host exhaustion from simultaneous scans |
+| **`GLOBAL_SCAN_TIMEOUT`** | `integer`| `600` | Seconds ($60 \le t \le 3600$) | `600` (10 minutes) | Hard ceiling killing hung subprocesses |
+| **`NMAP_TIMEOUT`** | `integer`| `180` | Seconds ($30 \le t \le 1800$) | `180` (3 minutes) | Maximum runtime allocated to Nmap phase |
+| **`NMAP_TIMING`** | `string` | `"T4"` | `"T0"`, `"T1"`, `"T2"`, `"T3"`, `"T4"`, `"T5"` | `"T4"` | Balances packet pacing vs detection avoidance |
+| **`NUCLEI_TIMEOUT`** | `integer`| `300` | Seconds ($60 \le t \le 2400$) | `300` (5 minutes) | Maximum runtime allocated to Nuclei phase |
+| **`NUCLEI_RATE_LIMIT`** | `integer`| `50` | Requests/sec ($1 \le rl \le 500$) | `50` to `100` | Limits HTTP request burst rate against targets |
+| **`MAX_VULNERABILITIES`**| `integer`| `1000` | Integer ($50 \le v \le 10000$) | `1000` | Safety circuit breaker against honeypot DoS |
+
+#### 🛡️ Network Security & Perimeter Policy
+| Variable | Type | Default | Validation & Permitted Values | Production Recommendation | Security Implication |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`ALLOW_LOCALHOST_SCANNING`**| `boolean`| `false` | `true`, `false` | `false` | **CRITICAL**: Set true only in isolated local dev |
+| **`ALLOW_PRIVATE_IP_SCANNING`**| `boolean`| `false` | `true`, `false` | `false` | **CRITICAL**: Controls RFC 1918 internal scanning |
+| **`MAX_CIDR_PREFIX`** | `integer`| `24` | Prefix mask ($24 \le p \le 32$) | `24` | Prevents denial of service from wide subnets |
+| **`MAX_BATCH_TARGETS`**| `integer`| `256` | Integer ($1 \le m \le 1024$) | `256` | Limits maximum hosts submitted in one batch |
+| **`BATCH_CONCURRENCY`**| `integer`| `3` | Worker slots ($1 \le c \le 16$) | `3` to `5` | Regulates parallel sub-scans in a batch |
+
+#### 🚦 Rate Limiting & Access Security
+| Variable | Type | Default | Validation & Permitted Values | Production Recommendation | Security Implication |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`RATE_LIMIT_ENABLED`**| `boolean`| `true` | `true`, `false` | `true` | Safeguards API from automated volumetric abuse |
+| **`RATE_LIMIT_PER_MINUTE`**| `integer`| `10` | Requests/min ($1 \le r \le 1000$) | `30` to `60` | Per-client IP sliding window allowance |
+| **`RATE_LIMIT_PER_HOUR`**| `integer`| `100` | Requests/hour ($10 \le r \le 50000$) | `300` | Hourly burst allowance |
+| **`CLEANUP_SECRET`** | `string` | `null` | String $\ge 16$ characters | Strong random token | Required in header to invoke `/api/scan/cleanup` |
+
+#### 🧠 AI Risk Intelligence
+| Variable | Type | Default | Validation & Permitted Values | Production Recommendation | Security Implication |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`GROQ_API_KEY`** | `string` | `null` | `gsk_...` Groq API key | Provide for LLM analysis | Securely stored; never echoed in API output |
+| **`GROQ_MODEL`** | `string` | `"llama-3.3-70b-versatile"` | Supported Groq model string | `"llama-3.3-70b-versatile"` | Selects LLM model weights for threat inference |
+
+---
+
+### 2. Hardened Production Configuration Example (`.env.production`)
+
+```env
+# Core Production Settings
+APP_NAME="XenoraSec Enterprise"
+DEBUG=False
+ALLOWED_ORIGINS="https://scanner.internal.company.com"
+
+# Reverse Proxy Trust (Required behind Nginx / Cloudflare)
+TRUST_PROXY_HEADERS=True
+TRUSTED_PROXIES="127.0.0.1,172.20.0.0/16"
+
+# Database Concurrency (PostgreSQL asyncpg recommended for multi-node)
+DATABASE_URL="sqlite+aiosqlite:////data/scans.db"
+
+# Perimeter Safety Guards
+ALLOW_LOCALHOST_SCANNING=False
+ALLOW_PRIVATE_IP_SCANNING=False
+MAX_CIDR_PREFIX=24
+MAX_BATCH_TARGETS=256
+BATCH_CONCURRENCY=3
+
+# Subprocess Performance & Timeouts
+MAX_CONCURRENT_SCANS=4
+GLOBAL_SCAN_TIMEOUT=600
+NMAP_TIMEOUT=180
+NMAP_TIMING="T4"
+NUCLEI_TIMEOUT=300
+NUCLEI_RATE_LIMIT=75
+MAX_VULNERABILITIES=1000
+
+# Rate Limiting & Admin Maintenance
+RATE_LIMIT_ENABLED=True
+RATE_LIMIT_PER_MINUTE=30
+RATE_LIMIT_PER_HOUR=300
+CLEANUP_SECRET="e9a7c3b2f1d84e5a9c0b1a2e3f4d5c6b7a8"
+
+# AI Inference (Optional)
+GROQ_API_KEY="gsk_prod_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+GROQ_MODEL="llama-3.3-70b-versatile"
+```
 
 ---
 
