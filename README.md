@@ -1871,12 +1871,12 @@ pytest tests/test_reports.py -v          # Multi-format report export generators
 cd frontend
 
 # TypeScript compilation check across all components & hooks
-npm run type-check
+npx tsc -b
 
 # ESLint static analysis enforcing React 19 rules
 npm run lint
 
-# Production bundle compilation & chunk optimization
+# Production bundle compilation & chunk optimization (runs tsc -b && vite build)
 npm run build
 ```
 
