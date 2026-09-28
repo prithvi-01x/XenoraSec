@@ -1809,42 +1809,98 @@ INFO     : #64748b (Slate-500)   │ Background: rgba(100, 116, 139, 0.12)│ Bo
 
 ## 🧪 Testing & Quality Assurance
 
-XenoraSec maintains a rigorous automated test suite covering security controls, mathematical modeling, and concurrent operations:
+XenoraSec enforces a zero-regression policy across backend security guards, mathematical risk formulas, and frontend user workflows through a multi-tier testing pipeline:
 
-### Backend Test Suite (Pytest)
+```mermaid
+flowchart TD
+    subgraph TestingPyramid ["Testing Pyramid"]
+        E2E["Playwright E2E Browser Tests\n(Live UI, Drawer, Terminal SSE, Downloads)"]
+        INTEG["Integration Tests (Pytest + AsyncClient)\n(REST API, Batch Queues, DB Concurrency)"]
+        UNIT["Unit Tests (Pytest & Vitest)\n(SSRF Guard, MM Formula, RFC SPF/DMARC)"]
+        STATIC["Static Code Analysis\n(Ruff, MyPy, TypeScript Strict, ESLint)"]
+    end
 
-The test suite includes 25+ automated unit and integration tests:
-
-```bash
-# Run all tests with verbose output
-pytest -v
-
-# Run a specific test module
-pytest tests/test_security.py
-pytest tests/test_ai_service.py
+    STATIC --> UNIT --> INTEG --> E2E
 ```
 
-#### Test Coverage Matrix
+### 1. Backend Test Suite (Pytest & Coverage)
 
-| Test Module | Focus Area | Key Invariants Verified |
+The backend features an asynchronous test suite covering unit invariants, database concurrency, and network security filters:
+
+```bash
+# Run full test suite with verbose reporting and timing
+pytest -v
+
+# Run with test coverage analysis and missing line identification
+pytest --cov=app --cov-report=term-missing --cov-report=html
+
+# Run specific functional test categories
+pytest tests/test_security.py -v       # SSRF & input gate invariants
+pytest tests/test_recon.py -v          # Passive OSINT & RFC 7208/7489 tests
+pytest tests/test_ai_service.py -v     # Michaelis-Menten kinetics & Groq fallback
+pytest tests/test_database.py -v       # SQLite WAL concurrency & busy timeouts
+pytest tests/test_batch_scan.py -v     # CIDR subnet expansion & batch slots
+```
+
+#### Test Suite Inventory & Key Invariants
+
+| Test Module | Coverage Scope | Verified Invariants & Edge Cases |
 | :--- | :--- | :--- |
-| **`test_security.py`** | SSRF & Input Gate | Validates loopback blocking, DNS resolution, private IP rejection, and domain regex |
-| **`test_rate_limit.py`** | Anti-Spoofing | Verifies proxy header gating, trusted peer checks, and sliding-window limits |
-| **`test_cancellation.py`** | Subprocess Safety | Ensures `process.kill()` executes on `asyncio.CancelledError` |
-| **`test_ai_service.py`** | Risk Scoring | Proves Michaelis-Menten half-saturation point ($S=15 \implies 5.0$) & Groq fallback |
-| **`test_database.py`** | DB Concurrency | Checks WAL mode, 30s busy timeout, and concurrent multi-session execution |
-| **`test_api.py`** | REST API Endpoints | End-to-end route tests for `/health`, `/queue`, `/history`, and partial retries |
+| **`test_security.py`** | SSRF & Target Gate | Proves loopback (`127.0.0.1`), private RFC 1918 (`10.0.0.0/8`, `192.168.0.0/16`), link-local (`169.254.0.0/16`), and AWS metadata IP (`169.254.169.254`) rejection via real `socket.getaddrinfo` resolution |
+| **`test_rate_limit.py`** | Anti-Spoofing | Verifies sliding-window counter eviction, trusted proxy header validation, and rightmost hop parsing |
+| **`test_cancellation.py`**| Subprocess Safety | Asserts `process.kill()` executes on `asyncio.CancelledError` and verifies cold-start zombie recovery |
+| **`test_ai_service.py`** | Risk Scoring | Proves exact half-saturation point ($S = 15.0 \implies \text{Score} = 5.0$), asymptotic limits ($S \to \infty \implies 10.0$), and Groq API 10s timeout fallback |
+| **`test_database.py`** | DB Concurrency | Checks `PRAGMA journal_mode=WAL`, 30s busy timeout, and concurrent multi-session read/write without `database is locked` errors |
+| **`test_recon.py`** | Passive OSINT | Verifies crt.sh wildcard stripping, Cloudflare DoH fallback on timeout, RFC 7208 SPF permerror detection, and RFC 7489 DMARC subdomain inheritance |
+| **`test_batch_scan.py`** | CIDR Subnets | Validates `/24` to `/32` host math, rejection of `/16` subnets (HTTP 422), and `asyncio.Semaphore` slot distribution |
+| **`test_assets.py`** | ASM Asset Registry | Proves idempotent upsert from scan, port state updates, vulnerability lifecycle tracking, and cascade deletion integrity |
+| **`test_api.py`** | REST Routes | End-to-end route tests for `/health`, `/queue`, `/history`, and partial retries |
 
-### Frontend Build & Type Verification
+---
+
+### 2. Frontend Strict Verification & Linting
 
 ```bash
 cd frontend
-# TypeScript compilation & production build
-npm run build
 
-# Run ESLint quality checks
+# TypeScript compilation check across all components & hooks
+npm run type-check
+
+# ESLint static analysis enforcing React 19 rules
 npm run lint
+
+# Production bundle compilation & chunk optimization
+npm run build
 ```
+
+---
+
+### 3. Playwright End-to-End (E2E) Browser Automation Guide
+
+XenoraSec includes end-to-end browser test suites powered by **Playwright** (`tests/e2e/`), automating critical user journeys across desktop and mobile viewports:
+
+#### Running Playwright Tests
+```bash
+# Install Playwright browser dependencies (Chromium, Firefox, WebKit)
+npx playwright install --with-deps
+
+# Run all E2E tests headlessly
+npx playwright test
+
+# Run tests in interactive UI mode with time-travel debugger
+npx playwright test --ui
+
+# Inspect visual HTML test execution report
+npx playwright show-report
+```
+
+#### Automated End-to-End Test Scenarios
+1. **Target Submission Journey**: Types target string, verifies dynamic format badge (`DOMAIN`), triggers scan, and asserts redirection to live progress view.
+2. **CIDR Batch Management**: Selects CIDR mode, clicks `/29` quick-fill chip, verifies target preview counter shows 6 hosts, submits batch, and validates batch progress modal.
+3. **Live Terminal Streaming**: Attaches to running scan SSE channel, verifies terminal console displays green port records and yellow/red vulnerability stream entries.
+4. **Interactive Asset Drawer**: Navigates to `/assets`, filters by `Critical` status, clicks host row, and asserts slide-out inspection drawer displays open ports and CVE references.
+5. **Multi-Format Report Export**: Clicks Export button, selects PDF / HTML / Markdown options, and verifies browser download triggers with valid file attachments.
+6. **Mobile Responsive Navigation**: Emulates mobile viewport (375x812 iPhone), asserts desktop sidebar collapses into hamburger button, opens drawer, and verifies responsive table scroll.
 
 ---
 
