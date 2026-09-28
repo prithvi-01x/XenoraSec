@@ -2,19 +2,49 @@
 
 > **Next-Generation Autonomous Security Assessment & Threat Surface Discovery Engine**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python](https://img.shields.io/badge/Python-3.10+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![React](https://img.shields.io/badge/React-19+-61DAFB.svg?logo=react&logoColor=black)](https://reactjs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5+-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3+-06B6D4.svg?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
-[![Docker Ready](https://img.shields.io/badge/Docker-Ready-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com/)
-[![AI Powered](https://img.shields.io/badge/AI-Groq%20%2B%20Llama%203.3-F05A28.svg)](https://groq.com/)
-[![GitHub](https://img.shields.io/badge/GitHub-Repository-181717?logo=github)](https://github.com/prithvi-01x/XenoraSec)
+<p align="center">
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12-3776AB.svg?logo=python&logoColor=white" alt="Python Versions"></a>
+  <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/FastAPI-0.109-009688.svg?logo=fastapi&logoColor=white" alt="FastAPI"></a>
+  <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-19+-61DAFB.svg?logo=react&logoColor=black" alt="React 19"></a>
+  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5.0+-3178C6.svg?logo=typescript&logoColor=white" alt="TypeScript 5"></a>
+  <a href="https://tailwindcss.com/"><img src="https://img.shields.io/badge/TailwindCSS-3.4+-06B6D4.svg?logo=tailwindcss&logoColor=white" alt="TailwindCSS"></a>
+  <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-Ready-2496ED.svg?logo=docker&logoColor=white" alt="Docker"></a>
+  <a href="https://groq.com/"><img src="https://img.shields.io/badge/AI-Groq%20%2B%20Llama%203.3-F05A28.svg" alt="Groq AI"></a>
+  <a href="https://github.com/prithvi-01x/XenoraSec/actions/workflows/ci.yml"><img src="https://github.com/prithvi-01x/XenoraSec/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a>
+  <a href="https://nmap.org/"><img src="https://img.shields.io/badge/Engine-Nmap%207.94+-blue.svg" alt="Nmap"></a>
+  <a href="https://github.com/projectdiscovery/nuclei"><img src="https://img.shields.io/badge/Engine-Nuclei%20v3.3.8-purple.svg" alt="Nuclei"></a>
+  <a href="https://github.com/prithvi-01x/XenoraSec"><img src="https://img.shields.io/badge/Security-SSRF%20Guarded-success.svg" alt="Security Guarded"></a>
+</p>
+
+<p align="center">
+  <a href="#-quick-start"><b>⚡ Quick Start</b></a> •
+  <a href="#-architecture"><b>🏗️ Architecture</b></a> •
+  <a href="#-rest-api-reference"><b>📡 API Reference</b></a> •
+  <a href="#-dual-engine-scanning"><b>⚙️ Dual Engine</b></a> •
+  <a href="#-passive-reconnaissance--osint-engine"><b>🌐 Passive OSINT</b></a> •
+  <a href="#-asset-inventory--attack-surface-management"><b>🏢 Asset Management</b></a> •
+  <a href="#-production-deployment"><b>🚢 Docker</b></a>
+</p>
 
 <p align="center">
   <img src="Screenshots/17.png" width="900" alt="XenoraSec Platform Dashboard">
 </p>
+
+---
+
+### 📊 Executive Platform Summary
+
+| Dimension | XenoraSec Specification | Industry Standard / Alternative Scanners |
+| :--- | :--- | :--- |
+| **Core Architecture** | Fully non-blocking `asyncio` backend (FastAPI + React 19) | Threaded or synchronous WSGI blocking architectures |
+| **Active Reconnaissance** | Unprivileged `-sT -sV` TCP connect scanning with fault-tolerant XML parser | Raw root-requiring `-sS` scans prone to cloud container drops |
+| **Vulnerability Detection** | Line-by-line JSONL streaming engine (Nuclei v3.3.8) with ring-buffer cap | Monolithic batch execution buffering hundreds of MB in RAM |
+| **Passive OSINT & Recon** | crt.sh CT mining, Cloudflare DoH, RFC 7208/7489 email hygiene, TLS telemetry | Fragmented CLI tools requiring separate bash scripting |
+| **Risk Scoring Model** | Bounded Michaelis-Menten saturation ($V_{\max}=10, K_m=15$) + Groq Llama 3.3 | Unbounded linear additions or arbitrary subjective thresholds |
+| **Concurrency & Storage** | SQLite Write-Ahead Logging (WAL) + 30s busy timeout / PostgreSQL asyncpg | File-locking SQLite errors during concurrent browser polling |
+| **Streaming UI Telemetry** | Server-Sent Events (SSE) & WebSocket interactive terminal replay | Polling-only spinner modals with zero raw tool visibility |
+| **Defensive Safeguards** | Zero-trust SSRF, DNS pre-resolution, proxy anti-spoofing, zombie cleanup | Permissive internal network loops and reverse-proxy spoof vulnerabilities |
 
 ---
 
@@ -28,15 +58,20 @@
 - [Passive Reconnaissance & OSINT Engine](#-passive-reconnaissance--osint-engine)
 - [Asset Inventory & Attack Surface Management](#-asset-inventory--attack-surface-management)
 - [AI Risk Scoring Model](#-ai-risk-scoring-model)
+- [Live Terminal & Streaming Engine](#-live-terminal--streaming-engine)
 - [Security & Defensive Safeguards](#-security--defensive-safeguards)
 - [Database Architecture](#-database-architecture)
 - [REST API Reference](#-rest-api-reference)
+- [cURL Command Cookbook](#-curl-command-cookbook)
 - [Environment Configuration](#-environment-configuration)
 - [Installation & Quick Start](#-quick-start)
 - [Production Deployment (Docker & Nginx)](#-production-deployment)
+- [Container Hardening & Non-Root Security](#-container-hardening--non-root-security)
 - [CI/CD Automation Pipeline](#-cicd-automation-pipeline)
 - [Frontend Tour & Mobile UX](#-frontend-tour--mobile-ux)
+- [Tactical Dark UI Design System](#-tactical-dark-ui-design-system)
 - [Testing & Quality Assurance](#-testing--quality-assurance)
+- [Performance Benchmarks & Tuning](#-performance-benchmarks--tuning)
 - [Troubleshooting & FAQ](#-troubleshooting--faq)
 - [Security Policy & Contributing](#-contributing--license)
 
