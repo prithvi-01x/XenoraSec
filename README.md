@@ -241,20 +241,96 @@ flowchart LR
 
 ## ⚙️ Dual-Engine Scanning Mechanics
 
-XenoraSec integrates two premier security tools through asynchronous streaming wrappers designed for resilience and memory efficiency:
+XenoraSec integrates two premier security tools through asynchronous streaming wrappers designed for resilience, thread-safety, and minimal memory footprints:
+
+```mermaid
+flowchart TD
+    subgraph Orchestration ["Asynchronous Scan Coordinator"]
+        INIT["Scan Intake & Parameter Normalization"]
+        DISPATCH["Parallel Subprocess Launcher\n(asyncio.create_subprocess_exec)"]
+        INIT --> DISPATCH
+    end
+
+    subgraph NmapSubsystem ["Engine 1: Nmap Network Recon"]
+        NMAP_EXEC["nmap -sT -sV -Pn --open -T4 -oX -"]
+        NMAP_STREAM["Stdout Async Line Reader"]
+        NMAP_XML["Fault-Tolerant XML Parser\n(Auto-Closing Tag Recovery)"]
+        NMAP_EXEC --> NMAP_STREAM --> NMAP_XML
+    end
+
+    subgraph NucleiSubsystem ["Engine 2: Nuclei v3 Vulnerability Engine"]
+        NUC_EXEC["nuclei -target <tgt> -jsonl -silent -no-interactsh -rl 50"]
+        NUC_STREAM["Streaming Line Parser (JSONL)"]
+        NUC_BUF["Adaptive 1MB Ring-Buffer & 1000-Finding Cap"]
+        NUC_EXEC --> NUC_STREAM --> NUC_BUF
+    end
+
+    subgraph Aggregator ["Result Serialization & Normalization"]
+        PORT_MAP["Open Ports & Services Schema"]
+        VULN_MAP["Vulnerability Finding Schema\n(CVE, CVSS, Severity, Matched Path)"]
+        SYNTH["Unified Threat Topology Synthesis"]
+    end
+
+    DISPATCH --> NMAP_EXEC
+    DISPATCH --> NUC_EXEC
+    NMAP_XML --> PORT_MAP --> SYNTH
+    NUC_BUF --> VULN_MAP --> SYNTH
+```
 
 ### 1. Nmap Network & Service Recon Engine
-- **Non-Root Execution**: Runs unprivileged `-sT` (TCP Connect) scans, enabling safe execution inside unprivileged containers and cloud environments without raw socket capabilities.
-- **Service Version Detection**: Appends `-sV` and `--open` to pinpoint running application versions and discard closed/filtered ports.
-- **Dynamic Timing Profiles**: Employs `-T4` for standard remote scans and dynamically accelerates to `-T5` when scanning permitted local endpoints.
-- **Fault-Tolerant XML Parser**: Reads structured XML (`-oX -`) directly from stdout. If a scan is forcibly truncated, the custom XML parser reconstructs broken closing tags (`</host>`, `</nmaprun>`) to extract partial port information instead of discarding the entire run.
-- **Subprocess Cancellation Safety**: Subprocess handles are strictly tracked. If an HTTP request is aborted or an `asyncio.CancelledError` is raised, `process.kill()` executes instantly, avoiding zombie processes.
+
+#### Non-Root Architecture & TCP Connect Scans
+Unlike traditional scanners that mandate `sudo` / `CAP_NET_RAW` privileges for SYN stealth packets (`-sS`), XenoraSec defaults to standard **TCP Connect** (`-sT`). This provides key production benefits:
+- **Cloud & Container Agnostic**: Runs effortlessly inside unprivileged Docker containers, AWS ECS tasks, and Kubernetes pods where raw socket creation is strictly forbidden.
+- **Socket Cleanliness**: Fully completes the three-way handshake (`SYN` $\to$ `SYN-ACK` $\to$ `ACK` $\to$ `RST`), ensuring OS kernel network stacks manage TCP state gracefully without leaking kernel memory or leaving half-open connections.
+
+#### Timing Templates & Concurrency Policy Matrix
+XenoraSec supports dynamic timing templates configured via the `NMAP_TIMING` environment variable or per-scan overrides:
+
+| Timing Policy | Flag | Min / Max Probe Delay | Initial / Max RTT Timeout | Host Concurrency | Primary Use Case |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Paranoid** | `-T0` | 5 minutes / 5 minutes | 5 seconds / 15 seconds | 1 host | Evading aggressive IDS/IPS packet counters |
+| **Sneaky** | `-T1` | 15 seconds / 15 seconds | 1.5 seconds / 10 seconds | 1 host | Low-noise stealth assessment |
+| **Polite** | `-T2` | 400 ms / 1 second | 1 second / 10 seconds | 1 host | Minimizing target server load and bandwidth |
+| **Normal** | `-T3` | 0 ms / 1 second | 100 ms / 10 seconds | Dynamic | Default standard network audit |
+| **Aggressive** | `-T4` | 0 ms / 10 ms | 100 ms / 1.25 seconds | Up to 1024 | **XenoraSec Default**: High-speed reliable LAN/Cloud scanning |
+| **Insane** | `-T5` | 0 ms / 5 ms | 50 ms / 300 ms | Up to 4096 | High-speed local subnets, local development tests |
+
+#### Port Selection & Range Syntax
+- **Top Ports**: Accepts standard shortcuts such as `--top-ports 100` (rapid recon) or `--top-ports 1000` (standard profile).
+- **Custom Port Ranges**: Accepts comma-separated ports and ranges (`22,80,443,8000-8080,8443`).
+- **Full Port Audits**: When designated in custom profiles, supports all 65,535 TCP ports (`-p 1-65535`).
+
+#### Fault-Tolerant XML Streaming Parser
+Standard Python XML libraries (`xml.etree.ElementTree`) fail catastrophically if an XML document is incomplete or abruptly truncated. XenoraSec's `NmapParser` implements a defensive state-machine parser:
+1. **Real-Time Extraction**: Streams output line-by-line, tracking `<host>`, `<port>`, `<service>`, and `<state>` tags.
+2. **Auto-Recovery on Truncation**: If the scan times out or is cancelled, the parser checks for missing root/host closing tags (`</ports>`, `</host>`, `</nmaprun>`) and synthetically injects them to produce well-formed XML.
+3. **Graceful Degraded Output**: Preserves any open port records discovered prior to the termination signal instead of zeroing the results.
+
+---
 
 ### 2. Nuclei Vulnerability & Misconfiguration Engine
-- **Streaming JSONL Ingestion**: Executes Nuclei with `-jsonl -silent -no-interactsh`, streaming findings line-by-line rather than loading gigabytes of output into memory.
-- **Adaptive Memory Ring-Buffer**: If the incoming stdout stream exceeds `MAX_BUFFER_SIZE` (1MB), the buffer automatically halves oldest data while retaining active line boundaries.
-- **Vulnerability Safety Cap**: Configurable limit (`MAX_VULNERABILITIES = 1000`) prevents Denial-of-Service attacks from honeypots or wildcard DNS servers returning infinite findings.
-- **Partial Health Classification**: If JSON decode errors exceed 20% of total lines emitted, the scan is flagged as `PARTIAL` rather than `FAILED`, preserving valid CVE and CWE discoveries.
+
+XenoraSec integrates **Nuclei v3.3.8**, the industry-standard template-driven vulnerability scanner maintained by ProjectDiscovery.
+
+#### Template Hierarchy & Detection Categories
+XenoraSec categorizes and dispatches Nuclei templates across modular security vectors:
+
+| Template Category | Filter Tag | Detection Scope & Risk Class |
+| :--- | :--- | :--- |
+| **CVE Signatures** | `cve,cves` | Documented Common Vulnerabilities & Exposures across enterprise software |
+| **Default Credentials** | `default-login,auth-bypass` | Exposed administrative login portals with factory or weak credentials |
+| **Exposed Panels** | `panel,dashboard` | Exposed management consoles (Grafana, Kibana, Jenkins, Kubernetes, Docker) |
+| **Cloud Misconfigurations**| `cloud,aws,azure,gcp` | Public S3 buckets, open Firebase databases, exposed metadata endpoints |
+| **Subdomain Takeovers** | `takeover,cname` | Dangling CNAME records pointing to unclaimed S3, GitHub, Heroku, or Fastly endpoints |
+| **Secrets & Token Leaks**| `token,keys,exposure` | Hardcoded API keys, JWT tokens, `.git` directory exposure, `.env` file leaks |
+| **Network Protocols** | `ssl,dns,tls,network` | Weak cipher suites, expired TLS certificates, open DNS recursion |
+
+#### Streaming JSONL Ingestion & Adaptive Ring Buffer
+- **Line-by-Line JSONL Stream**: Nuclei is executed with `-jsonl -silent -no-interactsh`, emitting discrete JSON lines over stdout. This bypasses the need to write multi-gigabyte temporary files to disk.
+- **Adaptive 1MB Ring-Buffer**: Output lines are collected into an in-memory buffer capped at `MAX_BUFFER_SIZE = 1_048_576` bytes. If the incoming buffer exceeds this threshold, the oldest 50% of the buffer is purged while strictly preserving newline boundaries.
+- **Vulnerability Safety Cap**: `MAX_VULNERABILITIES = 1000` terminates the ingest loop if a target emits excessive findings (e.g. honeypots or wildcard servers), returning an HTTP warning rather than crashing the worker.
+- **JSON Error Tolerance Threshold**: If upstream JSON decoding errors account for $\ge 20\%$ of lines received, the scan state is marked as `PARTIAL` rather than `FAILED`. Valid findings are preserved and surfaced to the analyst.
 
 ---
 
