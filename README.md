@@ -700,6 +700,77 @@ When `GROQ_API_KEY` is provided, `AIService` issues an inference request to `lla
 
 ---
 
+## 💻 Live Terminal & Streaming Engine
+
+Traditional security scanners hide process execution behind generic spinning loaders, leaving engineers blind to intermediate discoveries, hung processes, or long-running service probes. XenoraSec features an interactive **Live Terminal Streaming Engine** providing transparent, real-time command output straight from `stdout`/`stderr` of running Nmap and Nuclei subprocesses.
+
+```mermaid
+flowchart TD
+    subgraph Capture ["Subprocess Output Capture"]
+        P1["Nmap Subprocess"] -->|asyncio.StreamReader| S1["Nmap Stream Task"]
+        P2["Nuclei Subprocess"] -->|asyncio.StreamReader| S2["Nuclei Stream Task"]
+    end
+
+    subgraph Hub ["ScanStreamHub (Memory Managed)"]
+        S1 --> SANITIZE["ANSI Code Normalizer & Sanitizer"]
+        S2 --> SANITIZE
+        SANITIZE --> RING["1000-Line Circular Deque Replay Buffer"]
+        SANITIZE --> BROADCAST["Async Broadcast Queue (Pub/Sub)"]
+    end
+
+    subgraph Channels ["Streaming Ingress & Transports"]
+        BROADCAST --> SSE["SSE Transport\n(text/event-stream)"]
+        BROADCAST --> WS["WebSocket Transport\n(/api/scan/{id}/ws)"]
+    end
+
+    subgraph ClientLayer ["Interactive Frontend Console"]
+        SSE -.-> CONSOLE["React LiveTerminal Component"]
+        WS -.-> CONSOLE
+        RING -->|Initial History Replay on Connect| CONSOLE
+    end
+```
+
+### 1. Dual Transport Architecture: SSE & WebSockets
+
+XenoraSec supports both unidirectional Server-Sent Events (SSE) and full-duplex WebSockets:
+
+| Dimension | Server-Sent Events (SSE) | WebSocket Channel |
+| :--- | :--- | :--- |
+| **Endpoint** | `GET /api/scan/{scan_id}/stream` | `WS /api/scan/{scan_id}/ws` |
+| **MIME / Protocol** | `text/event-stream` (HTTP/1.1 or HTTP/2) | `RFC 6455` bidirectional binary/text frames |
+| **Connection Overhead** | Minimal; standard HTTP request with Keep-Alive | Handshake upgrade required (`Upgrade: websocket`) |
+| **Proxy Compatibility** | Works through any standard HTTP reverse proxy | Requires proxy upgrade headers in Nginx / Cloudflare |
+| **Use Case** | Lightweight browser telemetry and headless cURL monitoring | Interactive low-latency bi-directional terminal controls |
+
+#### Standard Event Payload Format
+Every emitted line is packaged as a structured JSON object:
+
+```json
+{
+  "scan_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+  "timestamp": "2026-09-28T13:42:15.102Z",
+  "source": "nuclei",
+  "level": "warning",
+  "message": "[cve-2023-46805] [http] [critical] https://target.example.com/api/v1/totp/user-backup-code",
+  "ansi_formatted": "\u001b[31m[cve-2023-46805]\u001b[0m \u001b[33m[critical]\u001b[0m ...",
+  "offset": 142
+}
+```
+
+### 2. 1000-Line Circular Replay Buffer
+
+Network fluctuations or tab reloads should never cause an analyst to miss critical log output:
+- **In-Memory Ring-Buffer**: Each running scan maintains a `collections.deque(maxlen=1000)` buffer in memory.
+- **Replay Handshake on Connect**: When a new SSE connection or WebSocket client attaches, the streaming hub immediately replays the entire ring-buffer in sequence before attaching the client to live broadcast frames.
+- **Automatic Garbage Collection**: When a scan transitions to a terminal state (`completed`, `failed`, `partial`), the in-memory stream buffer is flushed to disk and memory structures are deallocated after a 5-minute client retention window.
+
+### 3. ANSI Escape Formatting & Terminal UX
+- **Safe ANSI Normalization**: Scans produce colored ANSI escape sequences (`\x1b[32m` green for open ports, `\x1b[31m` red for critical vulnerabilities). XenoraSec strips dangerous control codes (such as terminal reset or cursor repositions) while rendering safe CSS color classes.
+- **Smart Auto-Scroll Lock**: The terminal console automatically locks to the bottom while streaming. If the user scrolls up to inspect an earlier line, auto-scroll pauses automatically and displays a "Scroll to bottom" badge.
+- **Real-Time Subprocess Demuxing**: Output lines are tagged by engine source (`[nmap]` vs `[nuclei]`), allowing engineers to filter the terminal view to inspect specific scanner output on the fly.
+
+---
+
 ## 🔒 Security Safeguards & Defensive Engineering
 
 A security scanner is a high-value target; XenoraSec is engineered with zero-trust defensive safeguards:
