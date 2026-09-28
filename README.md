@@ -2150,69 +2150,85 @@ xenorasec/
 ├── app/                              # FastAPI Asynchronous Backend
 │   ├── __init__.py
 │   ├── main.py                       # Application factory, lifespan hooks, zombie recovery
-│   ├── core/                         # Core runtime components & middlewares
+│   ├── core/                         # Core security & configuration modules
 │   │   ├── config.py                 # Pydantic Settings & environment validation
-│   │   ├── database.py               # SQLAlchemy async engine & SQLite WAL configuration
+│   │   ├── logging.py                # Structured JSON / ANSI console logger
 │   │   ├── rate_limit.py             # Sliding-window IP rate limiter with proxy trust
 │   │   └── security.py               # Target sanitization, SSRF guard & DNS lookup
-│   ├── api/                          # REST API route handlers
-│   │   ├── v1/
-│   │   │   ├── scan.py               # Single & batch scan routes, stream endpoints
-│   │   │   ├── recon.py              # Passive OSINT & reconnaissance endpoints
-│   │   │   └── assets.py             # Attack surface management & inventory CRUD
-│   ├── models/                       # SQLAlchemy ORM entity definitions
-│   │   ├── scan.py                   # ScanResult, BatchScan database models
-│   │   ├── asset.py                  # Asset, AssetPort, AssetVulnerability models
-│   │   └── recon.py                  # ReconHistory ledger database model
+│   ├── db/                           # Persistence layer & database models
+│   │   ├── database.py               # SQLAlchemy async engine & SQLite WAL configuration
+│   │   ├── models.py                 # ScanResult, Asset, AssetPort, AssetVulnerability, ReconHistory
+│   │   └── crud.py                   # Async database CRUD operations
+│   ├── routes/                       # REST API route controllers
+│   │   ├── scan.py                   # Single & batch scan routes, SSE/WS stream endpoints
+│   │   ├── recon.py                  # Passive OSINT & reconnaissance endpoints
+│   │   ├── asset.py                  # Attack surface management & inventory CRUD
+│   │   ├── health.py                 # Liveness, readiness & DB connectivity probes
+│   │   └── ui.py                     # Dashboard telemetry & aggregate statistics
 │   ├── schemas/                      # Pydantic schemas for request/response serialization
 │   │   ├── scan.py                   # ScanRequest, ScanResponse, ScanResultSchema
 │   │   ├── asset.py                  # AssetCreate, AssetUpdate, AssetDetailSchema
-│   │   └── recon.py                  # ReconRequest, ReconResultSchema, DNSRecords
+│   │   ├── recon.py                  # ReconRequest, ReconResultSchema, DNSRecords
+│   │   ├── report.py                 # ReportExportRequest schema
+│   │   └── stream.py                 # StreamChunk & terminal wire protocol
 │   └── services/                     # Business logic and external tool wrappers
-│       ├── nmap_scanner.py           # Async Nmap wrapper with fault-tolerant XML parser
-│       ├── nuclei_scanner.py         # Async Nuclei wrapper with streaming JSONL reader
+│       ├── nmap_scan.py              # Async Nmap wrapper with fault-tolerant XML parser
+│       ├── nuclei_scan.py            # Async Nuclei wrapper with streaming JSONL reader
 │       ├── ai_service.py             # Michaelis-Menten kinetics & Groq Llama 3.3 LLM
-│       ├── stream_hub.py             # SSE & WebSocket real-time terminal buffer hub
+│       ├── event_bus.py              # SSE & WebSocket real-time terminal buffer hub
 │       ├── recon_service.py          # crt.sh miner, Cloudflare DoH, RFC mail evaluator
 │       ├── asset_service.py          # Idempotent delta upsert & ASM inventory sync
-│       └── report_generator.py       # Multi-format security report compiler (PDF/HTML/MD/JSON)
+│       ├── report_service.py         # Multi-format report compiler (PDF/HTML/MD/JSON/CSV)
+│       ├── scanner_service.py        # Central scan lifecycle & subprocess coordinator
+│       └── profile_service.py        # Pre-configured scan profiles (Quick/Full/Custom)
 ├── frontend/                         # React 19 + TypeScript + Vite SPA
 │   ├── index.html                    # Single Page Application HTML entrypoint
 │   ├── package.json                  # Frontend dependencies & build scripts
 │   ├── vite.config.ts                # Vite build and proxy development configuration
-│   ├── tailwind.config.js            # Tactical Dark theme design tokens & colors
-│   ├── nginx.conf                    # Production reverse proxy, caching & SSE/WS upgrades
-│   └── src/                          # Application source code
-│       ├── main.tsx                  # React DOM mount point & TanStack Query client
-│       ├── App.tsx                   # Top-level routing, sidebar & drawer shell
-│       ├── components/               # Tactical UI components
-│       │   ├── ScanPanel.tsx         # Target input, format detection & CIDR chips
-│       │   ├── LiveTerminal.tsx      # Terminal console with SSE/WS streaming & ANSI color
-│       │   ├── FindingCard.tsx       # Severity badge, CVSS pill & reproduction curl
-│       │   ├── AssetTable.tsx        # High-density ASM asset table & sorting
-│       │   ├── AssetDetailDrawer.tsx # Slide-out service & CVE inspection drawer
-│       │   ├── ReconPanel.tsx        # OSINT dispatcher, subdomain matrix & mail score
-│       │   └── ReportModal.tsx       # Multi-format export dialog (PDF/HTML/MD/JSON/CSV)
-│       ├── hooks/                    # Reusable custom React hooks
-│       │   ├── useScanStream.ts      # SSE and WebSocket streaming client hook
-│       │   └── useAssetInventory.ts  # TanStack query wrapper for ASM endpoints
-│       └── types/                    # Shared TypeScript interfaces & API contracts
-├── tests/                            # Test automation suite
+│   ├── src/                          # Application source code
+│   │   ├── main.tsx                  # React DOM mount point & TanStack Query client
+│   │   ├── App.tsx                   # Top-level routing, sidebar & layout shell
+│   │   ├── api/                      # Axios HTTP client & API route wrappers
+│   │   ├── components/               # Tactical UI components
+│   │   │   ├── ScanPanel.tsx         # Target input, format detection & CIDR chips
+│   │   │   ├── LiveTerminal.tsx      # Terminal console with SSE/WS streaming & ANSI color
+│   │   │   ├── ScanProfileSelector.tsx # Tactical scan profile radio selector
+│   │   │   ├── ReportExportModal.tsx # Multi-format export dialog (PDF/HTML/MD/JSON/CSV)
+│   │   │   ├── BatchProgressModal.tsx # CIDR subnet batch tracking modal
+│   │   │   ├── SubdomainTable.tsx    # Passive OSINT subdomain discovery table
+│   │   │   ├── DnsInspector.tsx      # Multi-type DNS record inspection card
+│   │   │   ├── TechStackGrid.tsx     # Web tech, headers & SSL/TLS certificate inspector
+│   │   │   ├── RiskScore.tsx         # Michaelis-Menten risk gauge component
+│   │   │   ├── SeverityBadge.tsx     # Severity indicator pills
+│   │   │   └── StatusBadge.tsx       # Scan status badge component
+│   │   ├── pages/                    # Route page views
+│   │   │   ├── DashboardPage.tsx     # Security operations overview & scan trigger
+│   │   │   ├── ScanResultsPage.tsx   # Detailed findings dossier & terminal view
+│   │   │   ├── HistoryPage.tsx       # Historical audit log & search
+│   │   │   ├── AssetInventoryPage.tsx# ASM attack surface management table
+│   │   │   └── ReconPage.tsx         # Passive OSINT intelligence center
+│   │   ├── hooks/                    # Custom React hooks (useApi)
+│   │   └── types/                    # Shared TypeScript interfaces & API contracts
+├── tests/                            # Asynchronous Pytest test suite (124 tests)
 │   ├── conftest.py                   # Async Pytest fixtures & mock subprocess runners
 │   ├── test_security.py              # SSRF protection, loopback & private IP tests
 │   ├── test_rate_limit.py            # Sliding-window rate limiter & proxy anti-spoofing
 │   ├── test_cancellation.py         # Subprocess kill signals & zombie recovery
 │   ├── test_ai_service.py            # Michaelis-Menten math & Groq fallback tests
 │   ├── test_database.py              # SQLite WAL mode & concurrent connection tests
-│   ├── test_recon.py                 # crt.sh parsing, DoH fallback & RFC 7208/7489 tests
+│   ├── test_recon_*.py               # Passive OSINT suite (7 test modules: crtsh, dns, etc.)
 │   ├── test_batch_scan.py            # CIDR subnet expansion & batch semaphore tests
-│   ├── test_assets.py                # Asset delta upsert & lifecycle state tests
-│   ├── test_api.py                   # REST API route integration tests
-│   └── e2e/                          # Playwright end-to-end browser tests
+│   ├── test_asset_*.py               # Asset inventory routes & filter tests
+│   ├── test_reports.py               # PDF, HTML, Markdown, JSON, CSV report generation
+│   └── test_api.py                   # REST API route integration tests
+├── verify_ui_playwright.py           # Automated Playwright E2E browser verification script
 ├── docs/                             # Architecture & component documentation
-│   ├── UI_ARCHITECTURE.md
-│   ├── UI_COMPONENTS.md
-│   └── DESIGN_TOKENS.md
+│   ├── Architecture.md               # Design principles & architectural decisions
+│   ├── UI_ARCHITECTURE.md            # Frontend component architecture
+│   ├── UI_COMPONENTS.md              # Tactical UI component library catalog
+│   ├── DESIGN_TOKENS.md              # Tactical Dark color palette & tokens
+│   ├── PLAYWRIGHT_TESTING.md         # Playwright verification execution guide
+│   └── CONFIGURATION_REFERENCE.md    # Environment variable reference
 ├── docker-compose.yml                # Multi-container production deployment
 ├── docker-compose.override.yml.example # Local development live-reload overrides
 ├── Dockerfile                        # Multi-stage production backend container
