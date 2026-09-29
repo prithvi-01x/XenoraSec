@@ -3313,6 +3313,41 @@ We warmly welcome community contributions from security researchers, systems dev
 
 ---
 
+## 📖 Comprehensive Security & Scanning Terminology Glossary
+
+An alphabetical reference defining core architectural, networking, and vulnerability management terminology used throughout XenoraSec:
+
+| Term / Acronym | Full Form & Standard | Technical Definition & Platform Context |
+| :--- | :--- | :--- |
+| **ASM** | **Attack Surface Management** | The continuous discovery, inventorying, classification, and risk evaluation of all internet-facing digital assets, open ports, and cloud infrastructure owned by an organization. |
+| **ASN** | **Autonomous System Number** | A globally unique 16-bit or 32-bit identifier assigned by IANA/RIRs defining an autonomous routing domain running Border Gateway Protocol (BGP). Correlated in XenoraSec via RDAP lookup. |
+| **CIDR** | **Classless Inter-Domain Routing** | IP address allocation format (`IP/prefix`, e.g. `192.168.1.0/24`) specifying network masks. XenoraSec enforces prefix boundaries between `/24` (256 addresses) and `/32` (single host). |
+| **CNAME Takeover** | **Subdomain Takeover** | Vulnerability occurring when a DNS CNAME record points to an inactive or decommissioned third-party cloud service (e.g. unclaimed S3 bucket, GitHub Pages, Heroku app), allowing adversaries to claim the domain. |
+| **crt.sh** | **Certificate Transparency Log Miner** | Public web interface and API for querying append-only Certificate Transparency (CT) cryptographic logs mandated by RFC 6962. Used by XenoraSec for passive, non-intrusive subdomain discovery. |
+| **CVE** | **Common Vulnerabilities and Exposures** | Standardized dictionary of publicly disclosed cybersecurity vulnerabilities maintained by MITRE and NIST (e.g. `CVE-2023-46805`). |
+| **CVSS v3.1** | **Common Vulnerability Scoring System** | An open standard (0.0 to 10.0) assessing vulnerability severity across base metric groups (Attack Vector, Complexity, Privileges, User Interaction, Scope, Confidentiality, Integrity, Availability). |
+| **CWE** | **Common Weakness Enumeration** | Community-developed taxonomy of software weakness types (e.g., `CWE-79` for Cross-Site Scripting, `CWE-89` for SQL Injection). |
+| **DKIM** | **DomainKeys Identified Mail** | RFC 6376 cryptographic email authentication standard verifying domain ownership via asymmetric public keys published in DNS TXT records. |
+| **DMARC** | **Domain-based Message Authentication** | RFC 7489 policy framework combining SPF and DKIM to instruct receiving MTAs how to treat spoofed emails (`p=none`, `p=quarantine`, `p=reject`). |
+| **DoH** | **DNS-over-HTTPS** | RFC 8484 protocol executing DNS queries over TLS-encrypted HTTPS connections (port 443). XenoraSec utilizes Cloudflare DoH to bypass firewall blocks on outbound UDP port 53. |
+| **DREAD** | **Damage, Reproducibility, Exploitability, Affected Users, Discoverability** | Qualitative/quantitative threat prioritization model created by Microsoft to evaluate post-threat impact. |
+| **EPSS** | **Exploit Prediction Scoring System** | Data-driven statistical model (0.0 to 1.0 / 0% to 100%) estimating the probability that a software vulnerability will be exploited in the wild within 30 days. |
+| **Michaelis-Menten** | **Enzyme Kinetics Saturation Model** | Biochemical hyperbolic rate equation adapted by XenoraSec ($V_{\max}=10.0, K_m=15.0$) to guarantee mathematically bounded, monotonically increasing, non-linear risk scoring without score blowouts. |
+| **Nmap TCP Connect**| **`-sT` Scan Flag** | Operating-system-level socket connection scan that establishes complete 3-way TCP handshakes (`SYN` $\to$ `SYN-ACK` $\to$ `ACK`), running without `root` or `CAP_NET_RAW` privileges. |
+| **Nuclei v3** | **Template-Based Vulnerability Scanner** | Fast, configurable vulnerability scanner developed by ProjectDiscovery utilizing YAML-defined rule templates and domain-specific language (DSL) matchers. |
+| **OSINT** | **Open Source Intelligence** | Data and reconnaissance gathered entirely from publicly accessible, legal data sources (CT logs, DNS records, public routing registries) without direct active probing. |
+| **RDAP** | **Registration Data Access Protocol** | RFC 7480 successor to WHOIS providing structured JSON querying of domain registrations, IP network blocks, and Autonomous System Numbers across RIRs. |
+| **RFC 1918** | **Private Address Space Allocation** | Internet standard designating private IPv4 blocks (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) reserved for internal networks and prohibited by XenoraSec's default SSRF firewall. |
+| **RFC 7208** | **Sender Policy Framework (SPF)** | DNS TXT record protocol designating authorized IP addresses permitted to send emails on behalf of a domain. Flags the RFC 10-DNS-lookup limit to prevent MTA validation errors. |
+| **SAN** | **Subject Alternative Name** | X.509 certificate extension (RFC 5280) allowing multiple hostnames, wildcard domains, and IP addresses to be secured under a single TLS certificate. |
+| **SIEM** | **Security Information & Event Management** | Enterprise technology aggregating security telemetry, event logs, and findings across IT systems (e.g., Splunk, Elastic Security, Microsoft Sentinel). |
+| **SOAR** | **Security Orchestration, Automation & Response** | Platform automating incident response workflows, playbook executions, and security ticket routing (e.g., PagerDuty, Jira Automation, Cortex XSOAR). |
+| **SSRF** | **Server-Side Request Forgery** | Attack class where a malicious actor induces a server-side application to make HTTP/TCP requests to unintended locations, such as internal loopbacks or cloud metadata services. |
+| **STRIDE** | **Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation** | Comprehensive threat modeling methodology categorizing system security threats across 6 critical operational vectors. |
+| **WAL Mode** | **Write-Ahead Logging (SQLite)** | Concurrency architecture (`PRAGMA journal_mode=WAL`) where changes are appended to a separate log file, allowing concurrent readers to access database state while a writer records updates. |
+
+---
+
 ## 📄 License & Acknowledgements
 
 This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
