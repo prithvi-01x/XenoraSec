@@ -1400,6 +1400,21 @@ $$\text{DREAD Score} = \frac{D + R + E + A + D_{\text{isc}}}{5}$$
 └─────────────────────┴──────────┴──────────┴──────────┴──────────┴──────────┴───────────┘
 ```
 
+##### DREAD Scoring Dimensions & Substrate Load Correlation
+
+Each threat vector is assessed across five standardized dimensions scaled from 1 (minimal) to 10 (catastrophic):
+- **Damage Potential ($D$)**: Extent of operational destruction or confidential data compromise (10 = full remote host takeover; 1 = trivial banner string leakage).
+- **Reproducibility ($R$)**: Consistency with which an exploit succeeds without race conditions (10 = deterministic single-request exploit; 1 = intermittent multi-variable condition).
+- **Exploitability ($E$)**: Skill and tooling barrier required to weaponize the vulnerability (10 = automated script / publicly available zero-configuration exploit; 1 = sophisticated customized kernel exploit requiring advanced tradecraft).
+- **Affected Users ($A$)**: Proportion of user base, tenants, or systems impacted (10 = total administrative compromise across all tenants; 1 = isolated edge-case session).
+- **Discoverability ($D_{\text{isc}}$)**: Ease of locating the vulnerability using automated tooling (10 = exposed on default ports / public CT logs; 1 = deeply nested internal logic bug).
+
+In XenoraSec's risk aggregation pipeline, normalized DREAD scores serve as the empirical weighting function for individual finding substrates ($w_i$) fed into the **Michaelis-Menten saturation model**:
+
+$$S = \sum_{i=1}^{N} \left( \frac{\text{DREAD}_i}{10.0} \times \text{Base Severity Weight}_i \right)$$
+
+This mathematical bridge guarantees that vulnerabilities exhibiting extreme damage and high reproducibility saturate the score curve rapidly, elevating the asset to **Tier 1 Critical SLA** while filtering out noise from trivial informational disclosures.
+
 #### Trust Boundaries & Attack Surface Topology
 
 ```mermaid
