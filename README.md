@@ -2823,6 +2823,66 @@ xenorasec/
 
 ---
 
+## 🏛️ Compliance & Regulatory Framework Mapping
+
+Enterprise vulnerability management platforms must align with global regulatory compliance mandates and security control frameworks. XenoraSec's dual-engine scanning, continuous Attack Surface Management (ASM), and audit reporting directly support evidence collection and control validation across major frameworks:
+
+```mermaid
+flowchart TD
+    AUDIT["Compliance Audit Requirement"] --> XENORA["XenoraSec Platform"]
+    XENORA --> NIST["NIST CSF 2.0\n(ID.AM, PR.IP, DE.CM)"]
+    XENORA --> ISO["ISO/IEC 27001:2022\n(A.5.7, A.8.8, A.8.20)"]
+    XENORA --> PCI["PCI-DSS v4.0\n(Req 6.4, Req 11.3)"]
+    XENORA --> SOC["SOC 2 Type II\n(CC6.8, CC7.1)"]
+    XENORA --> OWASP["OWASP Top 10\n(A01-A10 Coverage)"]
+```
+
+### 1. Framework Crosswalk Matrix
+
+| Regulatory Framework | Control Identifier | Control Description | XenoraSec Operational Capability | Evidentiary Output |
+| :--- | :--- | :--- | :--- | :--- |
+| **NIST CSF 2.0** | `ID.AM-01` | Inventories of physical and virtual assets are maintained. | Passive OSINT (crt.sh) + active network recon automatically discovers and catalogs hosts in Asset Inventory. | `/api/assets` JSON dossier & CSV inventory export |
+| **NIST CSF 2.0** | `DE.CM-01` | External service perimeter is monitored for unauthorized ports and services. | Unprivileged Nmap TCP Connect (`-sT`) scans monitor open ports and service banner version drifts. | Nmap XML & `/api/scan/results/{id}` port tables |
+| **NIST CSF 2.0** | `ID.RA-01` | Vulnerabilities in assets are identified and documented. | Nuclei v3.3.8 streaming JSONL engine tests against thousands of community and custom CVE signatures. | Multi-format reports (PDF, HTML, Markdown) |
+| **ISO/IEC 27001:2022**| `A.5.7` | Threat Intelligence: Information relating to threats is collected and analyzed. | Passive OSINT module queries Certificate Transparency logs and historical DNS archives. | Recon History Ledger & Subdomain Topology |
+| **ISO/IEC 27001:2022**| `A.8.8` | Management of Technical Vulnerabilities: Vulnerabilities are evaluated against risk. | Deterministic Michaelis-Menten risk scoring ($0.0 - 10.0$) plus optional Groq Llama 3.3 threat synthesis. | Executive Report Summary & Saturation Gauge |
+| **ISO/IEC 27001:2022**| `A.8.20` | Network Security: Security of network services is maintained. | DNS topology audit, reverse DNS (PTR) verification, and network perimeter exposure scans. | DNS Inspector & RDAP ASN routing tables |
+| **ISO/IEC 27001:2022**| `A.8.24` | Use of Cryptography: Protocols and certificates are kept secure. | Passive TLS inspector extracts negotiated cipher suites, TLS version (TLS 1.2/1.3), and certificate expiry. | SSL/TLS Certificate Telemetry Card |
+| **PCI-DSS v4.0** | `Req 11.3.1` | Perform quarterly external vulnerability scans via automated scanners. | Automated multi-target CIDR batch auditing (`/api/scan/batch`) and scheduled perimeter scans. | Executive PDF Compliance Dossier with CVSS v3.1 |
+| **PCI-DSS v4.0** | `Req 6.4.1` | Public web applications are evaluated for known vulnerabilities. | Nuclei web application templates auditing for XSS, SQLi, SSRF, auth-bypass, and directory traversal. | Technical Security Report with reproduction curl |
+| **SOC 2 Type II** | `CC6.8` | The entity prevents or detects unauthorized software execution and configurations. | Default credential tests, exposed administrative panels (Grafana, Kibana, Jenkins), and debug routes. | Finding Card with matched URLs and HTTP codes |
+| **SOC 2 Type II** | `CC7.1` | The entity uses detection and monitoring procedures to identify changes to attack surface. | ASM delta upsert engine records `first_seen` vs `last_seen` timestamps for newly exposed ports. | Asset Inventory slide-out audit drawer |
+
+### 2. OWASP Top 10 Coverage Mapping
+
+XenoraSec's template engine targets core categories of the OWASP Top 10:
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│                        OWASP Top 10 Detection Scope                    │
+├────────────────────────────────────────────────────────────────────────┤
+│ A01: Broken Access Control     │ Auth bypass, exposed actuators, IDORs │
+│ A02: Cryptographic Failures    │ Weak ciphers, expired certs, cleartext│
+│ A03: Injection                 │ SQLi, blind SSRF, command injection   │
+│ A04: Insecure Design           │ Dangling CNAMEs, subdomain takeovers  │
+│ A05: Security Misconfiguration │ Default creds, open S3, debug routes  │
+│ A06: Vulnerable Components     │ Outdated Apache/Nginx, unpatched CVEs │
+│ A07: Identification & Auth     │ Missing MFA endpoints, weak session id│
+│ A08: Software & Data Integrity │ Unvalidated redirects, poisoned CDNs  │
+│ A09: Logging & Monitoring      │ Missing security headers, silent 500s │
+│ A10: Server-Side Request (SSRF)│ Cloud metadata exposure, loopback URI │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### 3. Compliance Evidentiary Packaging Runbook
+To generate audit-ready documentation for external Qualified Security Assessors (QSA) or internal risk committees:
+1. **Generate Perimeter Scope Export**: Run `GET /api/assets?format=csv` to produce the full attack surface asset ledger.
+2. **Execute Full Audit Scan**: Trigger a Full Web & Network Audit (`scan_profile="full"`) against all in-scope CIDR blocks.
+3. **Download Signed Executive Summary**: Export the ReportLab PDF via `GET /api/scan/{id}/report?format=pdf&report_type=executive`.
+4. **Archive Machine-Readable Telemetry**: Save the raw JSON dossier (`format=json`) alongside timestamped SHA-256 checksums in your compliance evidence repository.
+
+---
+
 ## 🗺️ Product Roadmap
 
 ### Completed Milestones
