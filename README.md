@@ -54,7 +54,7 @@
 - [✨ Key Features](#-key-features)
 - [🏗️ Architecture & Pipeline](#-architecture--pipeline)
 - [⚙️ Dual-Engine Scanning Mechanics](#-dual-engine-scanning-mechanics)
-  - [🌐 Network Port Scanning Strategy & Rate Limiting](#network-port-scanning-strategy--rate-limiting-guide)
+  - [🌐 Network Port Scanning Strategy & Rate Limiting Guide](#-network-port-scanning-strategy--rate-limiting-guide)
   - [📝 Custom Nuclei Template Authoring Guide](#3-custom-nuclei-template-authoring-guide)
 - [🌐 Multi-Target & CIDR Subnet Scanning](#-multi-target--cidr-subnet-scanning)
 - [🌐 Passive Reconnaissance & OSINT Engine](#-passive-reconnaissance--osint-engine)
@@ -65,7 +65,7 @@
 - [📑 Multi-Format Security Report Generation](#-multi-format-security-report-generation)
 - [🔔 SIEM & SOAR Webhook & Event Payload Schemas](#-siem--soar-webhook--event-payload-schemas)
 - [🔒 Security Safeguards & Defensive Engineering](#-security-safeguards--defensive-engineering)
-  - [🎯 Threat Modeling & STRIDE / DREAD Taxonomy](#4-threat-modeling--stride--dread-attack-surface-taxonomy)
+  - [🎯 Threat Modeling & STRIDE / DREAD Attack Surface Taxonomy](#4-threat-modeling--stride--dread-attack-surface-taxonomy)
 - [🗄️ Database Architecture & Concurrency](#-database-architecture--concurrency)
   - [🚀 High-Concurrency Scaling & PostgreSQL Migration Guide](#3-high-concurrency-scaling--postgresql-production-migration-guide)
 - [📡 REST API Reference](#-rest-api-reference)
@@ -88,7 +88,7 @@
 - [🗺️ Product Roadmap](#-product-roadmap)
 - [🔒 Security Disclosure Policy & Safe Harbor](#-security-disclosure-policy--safe-harbor)
 - [🤝 Contributing & Developer Guidelines](#-contributing--developer-guidelines)
-- [📖 Comprehensive Security Terminology Glossary](#-comprehensive-security--scanning-terminology-glossary)
+- [📖 Comprehensive Security & Scanning Terminology Glossary](#-comprehensive-security--scanning-terminology-glossary)
 - [📄 License & Acknowledgements](#-license--acknowledgements)
 
 ---
@@ -323,7 +323,7 @@ Standard Python XML libraries (`xml.etree.ElementTree`) fail catastrophically if
 2. **Auto-Recovery on Truncation**: If the scan times out or is cancelled, the parser checks for missing root/host closing tags (`</ports>`, `</host>`, `</nmaprun>`) and synthetically injects them to produce well-formed XML.
 3. **Graceful Degraded Output**: Preserves any open port records discovered prior to the termination signal instead of zeroing the results.
 
-#### Network Port Scanning Strategy & Rate Limiting Guide
+#### 🌐 Network Port Scanning Strategy & Rate Limiting Guide
 
 Selecting the appropriate scanning parameters balances port discovery completeness against target saturation and intrusion detection triggers. XenoraSec applies the following engineering trade-offs:
 
