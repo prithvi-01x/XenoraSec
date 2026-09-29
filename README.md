@@ -2396,6 +2396,20 @@ Deploying an autonomous penetration testing and vulnerability scanning appliance
 - [ ] **Drop All Linux Capabilities**: Configure `cap_drop: [ALL]` in Docker Compose or Kubernetes pod specs. XenoraSec does not use raw sockets for default `-sT` scans.
 - [ ] **Prevent Privilege Escalation**: Verify `no-new-privileges:true` is active in container runtime definitions.
 - [ ] **Read-Only Root Filesystem**: Run container with `--read-only`, mounting writeable `tmpfs` only at `/tmp` and `/run`.
+- [ ] **Docker Daemon Socket Isolation**: Never mount `/var/run/docker.sock` into the application container. Exposing the Docker socket allows container breakout and full root takeover of the underlying host.
+- [ ] **Host Kernel Sysctl Hardening**: Apply network stack and memory protections in `/etc/sysctl.d/99-xenorasec-hardening.conf`:
+  ```ini
+  # Network SYN flood and IP spoofing protection
+  net.ipv4.tcp_syncookies = 1
+  net.ipv4.conf.all.rp_filter = 1
+  net.ipv4.icmp_echo_ignore_broadcasts = 1
+  
+  # Filesystem and kernel pointer leak mitigations
+  fs.protected_regular = 2
+  fs.protected_fifos = 2
+  kernel.kptr_restrict = 2
+  kernel.dmesg_restrict = 1
+  ```
 
 ### 6. Secrets & Operational Credential Hygiene
 - [ ] **Zero Hardcoded Secrets**: Ensure `GROQ_API_KEY` and `CLEANUP_SECRET` are passed through secure environment vaults (e.g. AWS Secrets Manager, HashiCorp Vault, Doppler, or GitHub Actions Secrets).
