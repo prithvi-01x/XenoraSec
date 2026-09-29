@@ -1080,6 +1080,131 @@ XenoraSec provides two distinct rendering perspectives for each format:
 
 ---
 
+## 🔔 SIEM & SOAR Webhook & Event Payload Schemas
+
+To integrate XenoraSec into Security Operations Centers (SOC) and Incident Response pipelines, the platform emits standardized JSON event payloads compatible with enterprise SIEM and SOAR platforms (Splunk, Elastic Common Schema, PagerDuty, and Jira).
+
+```mermaid
+flowchart LR
+    SCAN_FINISH["Scan Completion / High-Risk Finding"] --> WEBHOOK["Webhook Dispatcher\n(HMAC-SHA256 Signed)"]
+    WEBHOOK --> SPLUNK["Splunk HEC\n(/services/collector)"]
+    WEBHOOK --> ELASTIC["Elastic / OpenSearch\n(ECS Event Schema)"]
+    WEBHOOK --> PAGER["PagerDuty v2\n(/v2/enqueue)"]
+    WEBHOOK --> JIRA["Jira Cloud REST\n(/rest/api/3/issue)"]
+```
+
+### 1. Canonical Event Envelope Schema
+All emitted security notifications follow a unified RFC 7159 event envelope:
+
+```json
+{
+  "event_id": "evt_7f8c2b1a-9d3e-4b6a-8c1d-5e2f3a4b5c6d",
+  "event_type": "vulnerability.critical_detected",
+  "timestamp": "2026-09-28T14:32:00.124Z",
+  "producer": {
+    "name": "XenoraSec",
+    "version": "2.1.0",
+    "host": "scanner-node-01.internal"
+  },
+  "scan_context": {
+    "scan_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+    "target": "api.example.com",
+    "profile": "full",
+    "risk_score": 8.40
+  },
+  "data": {
+    "template_id": "cve-2023-46805",
+    "severity": "critical",
+    "name": "Ivanti Connect Secure Authentication Bypass",
+    "cvss_score": 9.8,
+    "cwe_id": "CWE-287",
+    "matched_at": "https://api.example.com/api/v1/totp/user-backup-code",
+    "reproduction_curl": "curl -X POST https://api.example.com/api/v1/totp/user-backup-code",
+    "epss_score": 0.942
+  }
+}
+```
+
+### 2. Splunk HTTP Event Collector (HEC) Adapter
+Forward scan findings directly into Splunk indexers (`sourcetype="xenorasec:finding"`):
+
+```json
+{
+  "time": 1790605920,
+  "host": "scanner-node-01.internal",
+  "source": "xenorasec",
+  "sourcetype": "xenorasec:finding",
+  "index": "security_ops",
+  "event": {
+    "action": "detected",
+    "target": "api.example.com",
+    "scan_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+    "risk_score": 8.40,
+    "cve": "CVE-2023-46805",
+    "cvss": 9.8,
+    "severity": "critical",
+    "endpoint": "https://api.example.com/api/v1/totp/user-backup-code"
+  }
+}
+```
+
+### 3. Elastic Common Schema (ECS) Mapping
+Enables immediate dashboard correlation within Elastic SIEM and Kibana Security:
+
+| XenoraSec Field | Elastic Common Schema (ECS) Field | Description |
+| :--- | :--- | :--- |
+| `timestamp` | `@timestamp` | UTC event creation timestamp |
+| `target` | `destination.domain` or `destination.ip` | Evaluated perimeter entity |
+| `open_ports[].port` | `destination.port` | Discovered open port number |
+| `vulnerabilities[].severity` | `vulnerability.severity` | Finding severity classification |
+| `vulnerabilities[].cvss_score` | `vulnerability.score.base` | CVSS v3.1 numeric base score |
+| `vulnerabilities[].cve` | `vulnerability.id` | NVD CVE identifier |
+| `risk_score` | `event.risk_score` | Michaelis-Menten aggregate posture score |
+
+### 4. PagerDuty Events API v2 Incident Trigger
+Dispatches instant pager notifications to on-call SOC engineers when `risk_score >= 8.0` or critical CVEs are detected:
+
+```json
+{
+  "routing_key": "pd-service-key-xenorasec-ops",
+  "event_action": "trigger",
+  "dedup_key": "xenora/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d/cve-2023-46805",
+  "payload": {
+    "summary": "CRITICAL Vulnerability Discovered: CVE-2023-46805 on api.example.com (CVSS 9.8)",
+    "severity": "critical",
+    "source": "XenoraSec ASM Engine",
+    "component": "Vulnerability Scanner",
+    "group": "Perimeter-Security",
+    "custom_details": {
+      "target": "api.example.com",
+      "risk_score": 8.40,
+      "matched_url": "https://api.example.com/api/v1/totp/user-backup-code",
+      "scan_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d"
+    }
+  }
+}
+```
+
+### 5. Webhook HMAC-SHA256 Signature Verification
+To prevent spoofing of incoming webhooks, XenoraSec signs every outbound HTTP POST request with an HMAC-SHA256 signature in the `X-Xenora-Signature` header:
+
+```python
+# Python Webhook Verification Example
+import hmac
+import hashlib
+
+def verify_xenora_webhook(payload_bytes: bytes, signature_header: str, secret_key: str) -> bool:
+    """Verifies that the incoming webhook payload was authentically emitted by XenoraSec."""
+    expected_sig = "sha256=" + hmac.new(
+        key=secret_key.encode("utf-8"),
+        msg=payload_bytes,
+        digestmod=hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(expected_sig, signature_header)
+```
+
+---
+
 ## 🔒 Security Safeguards & Defensive Engineering
 
 A security scanner is a high-value target; XenoraSec is engineered with zero-trust defensive safeguards:
