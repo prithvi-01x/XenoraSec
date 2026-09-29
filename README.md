@@ -1386,6 +1386,29 @@ def verify_xenora_webhook(payload_bytes: bytes, signature_header: str, secret_ke
     return hmac.compare_digest(expected_sig, signature_header)
 ```
 
+### 6. Microsoft Sentinel & ArcSight Common Event Format (CEF) Adapter
+For organizations running Microsoft Sentinel, ArcSight, or traditional Syslog aggregators, XenoraSec converts scan findings into standard RFC 5424 / CEF log events:
+
+```text
+CEF:0|XenoraSec|EnterpriseScanner|2.1|VULN_DETECTED|Critical Vulnerability Discovered|10|src=10.0.1.25 dst=api.example.com dpt=443 cs1=CVE-2023-46805 cs1Label=CVE cs2=CWE-287 cs2Label=CWE cfp1=9.8 cfp1Label=CVSS msg=Ivanti Connect Secure Authentication Bypass act=detected
+```
+
+#### Microsoft Sentinel Log Analytics Custom Table Ingestion (DCR)
+```json
+{
+  "TimeGenerated": "2026-09-28T14:32:00.124Z",
+  "TargetHost_s": "api.example.com",
+  "ScanId_g": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+  "VulnerabilityTitle_s": "Ivanti Connect Secure Authentication Bypass",
+  "CVE_s": "CVE-2023-46805",
+  "CVSS_d": 9.8,
+  "Severity_s": "Critical",
+  "RiskScore_d": 8.40,
+  "MatchedEndpoint_s": "https://api.example.com/api/v1/totp/user-backup-code",
+  "RemediationSLA_s": "48 Hours"
+}
+```
+
 ---
 
 ## 🔒 Security Safeguards & Defensive Engineering
