@@ -1525,6 +1525,118 @@ DB_MAX_OVERFLOW=20
 ```
 When a PostgreSQL connection string is detected, XenoraSec automatically activates SQLAlchemy `QueuePool` with active pre-ping health checks.
 
+### 3. High-Concurrency Scaling & PostgreSQL Production Migration Guide
+
+When scaling XenoraSec across distributed scan workers or running continuous mass CIDR subnet assessments, migrate from SQLite to PostgreSQL with dedicated connection pooling.
+
+```mermaid
+flowchart TD
+    subgraph AppCluster ["Stateless Backend Cluster"]
+        APP1["FastAPI Node 1 (asyncpg)"]
+        APP2["FastAPI Node 2 (asyncpg)"]
+        APP3["FastAPI Node 3 (asyncpg)"]
+    end
+
+    subgraph Pooler ["Connection Pooling Middleware"]
+        PGBOUNCE["pgBouncer\n(pool_mode = transaction, max_client_conn = 1000)"]
+    end
+
+    subgraph StorageEngine ["Enterprise Database Cluster"]
+        PG_PRIMARY[("PostgreSQL 16 Primary\n(ACID Writes & Asset Relational State)")]
+        PG_REPLICA[("PostgreSQL Read Replica\n(Read Queries & Historical Analytics)")]
+        PG_PRIMARY -.->|Streaming Replication| PG_REPLICA
+    end
+
+    APP1 --> PGBOUNCE
+    APP2 --> PGBOUNCE
+    APP3 --> PGBOUNCE
+    PGBOUNCE --> PG_PRIMARY
+```
+
+#### 1. SQLAlchemy 2.0 & asyncpg Connection Pool Sizing
+
+Configure the asyncpg driver inside `.env` to prevent pool exhaustion during concurrent batch operations:
+
+```env
+DATABASE_URL="postgresql+asyncpg://xenora:SecureVaultPass123!@pg-cluster.internal:5432/xenorasec"
+DB_POOL_SIZE=25
+DB_MAX_OVERFLOW=50
+DB_POOL_TIMEOUT=30
+DB_POOL_RECYCLE=1800
+DB_POOL_PRE_PING=True
+```
+
+- **`DB_POOL_SIZE`**: Base persistent connection pool kept alive per worker container.
+- **`DB_MAX_OVERFLOW`**: Burst capacity dynamically spawned under heavy batch scan loads.
+- **`DB_POOL_PRE_PING`**: Issues lightweight `SELECT 1` heartbeat probes to discard stale or severed TCP sockets before assigning a connection to a background worker.
+- **`DB_POOL_RECYCLE`**: Recycles connections every 1800 seconds (30 minutes) to eliminate server-side connection leaks.
+
+#### 2. pgBouncer Production Configuration (`pgbouncer.ini`)
+Deploy pgBouncer alongside PostgreSQL to handle thousands of concurrent polling requests without overwhelming Postgres process memory:
+
+```ini
+[databases]
+xenorasec = host=127.0.0.1 port=5432 dbname=xenorasec
+
+[pgbouncer]
+listen_addr = 0.0.0.0
+listen_port = 6432
+auth_type = scram-sha-256
+auth_file = /etc/pgbouncer/userlist.txt
+pool_mode = transaction
+max_client_conn = 1000
+default_pool_size = 30
+min_pool_size = 10
+reserve_pool_size = 5
+reserve_pool_timeout = 5
+max_db_connections = 100
+```
+
+#### 3. SQLite-to-PostgreSQL Data Migration Runbook
+
+To migrate an existing SQLite `scans.db` instance into PostgreSQL without data loss:
+
+1. **Step 1: Install PostgreSQL Client Libraries**:
+   ```bash
+   pip install asyncpg psycopg2-binary
+   ```
+2. **Step 2: Export SQLite Data using pgloader**:
+   Create a migration script `migrate_sqlite_to_pg.load`:
+   ```lisp
+   load database
+        from sqlite:///data/scans.db
+        into postgresql://xenora:password@localhost:5432/xenorasec
+
+   with include drop, create tables, create indexes, reset sequences
+
+     set work_mem to '128MB', maintenance_work_mem to '512MB';
+   ```
+   Execute the migration:
+   ```bash
+   pgloader migrate_sqlite_to_pg.load
+   ```
+3. **Step 3: Synchronize PostgreSQL Auto-Increment Sequences**:
+   ```sql
+   SELECT setval(pg_get_serial_sequence('scan_results', 'id'), coalesce(max(id), 1)) FROM scan_results;
+   SELECT setval(pg_get_serial_sequence('assets', 'id'), coalesce(max(id), 1)) FROM assets;
+   SELECT setval(pg_get_serial_sequence('asset_ports', 'id'), coalesce(max(id), 1)) FROM asset_ports;
+   SELECT setval(pg_get_serial_sequence('asset_vulnerabilities', 'id'), coalesce(max(id), 1)) FROM asset_vulnerabilities;
+   SELECT setval(pg_get_serial_sequence('recon_history', 'id'), coalesce(max(id), 1)) FROM recon_history;
+   ```
+4. **Step 4: Update `.env` and Verify Database Health**:
+   ```bash
+   curl -f http://localhost:8000/health
+   # Response: {"status":"healthy","database":"connected","backend":"postgresql"}
+   ```
+
+#### 4. Concurrency Slot Sizing Formula
+To prevent out-of-memory (OOM) kernel terminations when authoring high-throughput scan pipelines, size `MAX_CONCURRENT_SCANS` using the following formula:
+
+$$\text{Max Concurrent Scans} = \min\left(\left\lfloor \frac{\text{System Available RAM (MB)} - 1024}{350} \right\rfloor, \; \text{vCPU} \times 2\right)$$
+
+*Example*: On an 8 vCPU server with 16 GB RAM (16,384 MB):
+$$\text{Max Slots} = \min\left(\left\lfloor \frac{16384 - 1024}{350} \right\rfloor, \; 8 \times 2\right) = \min(43, 16) = \mathbf{16 \text{ slots}}$$
+
 ---
 
 ## 📡 REST API Reference
