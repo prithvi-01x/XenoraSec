@@ -2055,6 +2055,198 @@ XenoraSec incorporates an automated continuous integration and testing pipeline 
 
 ---
 
+## 🔄 DevSecOps CI/CD Integration Recipes
+
+Integrate XenoraSec into your continuous integration and continuous deployment (CI/CD) pipelines to establish automated Dynamic Application Security Testing (DAST) quality gates. Stop critical vulnerabilities, unauthenticated debug endpoints, and configuration drift before merging to production.
+
+```mermaid
+flowchart LR
+    COMMIT["Git Push / Pull Request"] --> CI["CI Runner (GitHub/GitLab/Jenkins)"]
+    CI --> DEPLOY["Deploy Ephemeral Preview / Staging"]
+    DEPLOY --> API_TRIGGER["Trigger XenoraSec Scan\n(POST /api/scan/)"]
+    API_TRIGGER --> POLL["Poll Scan Status\n(GET /api/scan/results/{id})"]
+    POLL --> GATE{"Quality Gate Check\n(Risk Score <= 4.0\n& Crit Vulns == 0)"}
+    GATE -->|Pass| APPROVE["Approve PR / Deploy to Production"]
+    GATE -->|Fail| BLOCK["Break Pipeline & Post PR Summary"]
+```
+
+### 1. GitHub Actions DAST Quality Gate Workflow
+Create `.github/workflows/xenorasec-dast.yml` in your application repository:
+
+```yaml
+name: XenoraSec DAST Security Gate
+
+on:
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+jobs:
+  security-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Trigger XenoraSec Scan
+        id: trigger_scan
+        env:
+          XENORASEC_URL: ${{ secrets.XENORASEC_HOST }}
+          TARGET_APP: "https://staging-${{ github.event.pull_request.number }}.internal.example.com"
+        run: |
+          SCAN_RESP=$(curl -s -X POST "$XENORASEC_URL/api/scan/" \
+            -H "Content-Type: application/json" \
+            -d "{\"target\": \"$TARGET_APP\", \"scan_profile\": \"quick\"}")
+          SCAN_ID=$(echo "$SCAN_RESP" | jq -r '.scan_id')
+          echo "scan_id=$SCAN_ID" >> $GITHUB_OUTPUT
+          echo "Dispatched scan $SCAN_ID against $TARGET_APP"
+
+      - name: Await Scan Completion & Enforce Quality Gate
+        env:
+          XENORASEC_URL: ${{ secrets.XENORASEC_HOST }}
+          SCAN_ID: ${{ steps.trigger_scan.outputs.scan_id }}
+          MAX_PERMISSIBLE_RISK: 4.0
+        run: |
+          echo "Polling scan $SCAN_ID..."
+          while true; do
+            STATUS=$(curl -s "$XENORASEC_URL/api/scan/results/$SCAN_ID" | jq -r '.status // "unknown"')
+            if [ "$STATUS" = "completed" ] || [ "$STATUS" = "partial" ]; then
+              break
+            elif [ "$STATUS" = "failed" ] || [ "$STATUS" = "timeout" ]; then
+              echo "::error::Scan failed with status: $STATUS"
+              exit 1
+            fi
+            sleep 10
+          done
+
+          RESULT=$(curl -s "$XENORASEC_URL/api/scan/results/$SCAN_ID")
+          RISK_SCORE=$(echo "$RESULT" | jq -r '.risk_score')
+          CRIT_COUNT=$(echo "$RESULT" | jq '[.vulnerabilities[]? | select(.severity == "critical")] | length')
+          HIGH_COUNT=$(echo "$RESULT" | jq '[.vulnerabilities[]? | select(.severity == "high")] | length')
+
+          echo "Audit completed. Risk Score: $RISK_SCORE | Critical: $CRIT_COUNT | High: $HIGH_COUNT"
+
+          # Enforce Threshold Gate
+          if [ "$CRIT_COUNT" -gt 0 ]; then
+            echo "::error::Security gate rejected: $CRIT_COUNT critical vulnerabilities discovered."
+            exit 1
+          fi
+
+          if (( $(echo "$RISK_SCORE > $MAX_PERMISSIBLE_RISK" | bc -l) )); then
+            echo "::error::Security gate rejected: Risk score $RISK_SCORE exceeds threshold of $MAX_PERMISSIBLE_RISK."
+            exit 1
+          fi
+
+          echo "Quality gate PASSED."
+```
+
+### 2. GitLab CI/CD Pipeline (`.gitlab-ci.yml`)
+
+```yaml
+stages:
+  - test
+  - dast
+
+xenorasec_dast_audit:
+  stage: dast
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl jq bc
+  script:
+    - |
+      SCAN_RESP=$(curl -s -X POST "$XENORASEC_URL/api/scan/" \
+        -H "Content-Type: application/json" \
+        -d "{\"target\": \"$CI_ENVIRONMENT_URL\", \"scan_profile\": \"quick\"}")
+      SCAN_ID=$(echo "$SCAN_RESP" | jq -r '.scan_id')
+      
+      while true; do
+        STATUS=$(curl -s "$XENORASEC_URL/api/scan/results/$SCAN_ID" | jq -r '.status // "unknown"')
+        [ "$STATUS" = "completed" ] && break
+        [ "$STATUS" = "failed" ] && exit 1
+        sleep 10
+      done
+
+      curl -s "$XENORASEC_URL/api/scan/$SCAN_ID/report?format=markdown&report_type=technical" -o dast-report.md
+      RISK=$(curl -s "$XENORASEC_URL/api/scan/results/$SCAN_ID" | jq -r '.risk_score')
+      if (( $(echo "$RISK > 4.5" | bc -l) )); then
+        echo "DAST Risk Score $RISK exceeds threshold 4.5"
+        exit 1
+      fi
+  artifacts:
+    reports:
+      dast: dast-report.md
+    expire_in: 30 days
+```
+
+### 3. Jenkins Declarative Pipeline (`Jenkinsfile`)
+
+```groovy
+pipeline {
+    agent any
+    environment {
+        XENORA_URL = 'http://xenorasec.internal:8000'
+        TARGET_HOST = 'staging.example.com'
+    }
+    stages {
+        stage('Dynamic Security Audit') {
+            steps {
+                sh '''
+                    SCAN_ID=$(curl -s -X POST "${XENORA_URL}/api/scan/" \
+                      -H "Content-Type: application/json" \
+                      -d "{\\"target\\": \\"${TARGET_HOST}\\", \\"scan_profile\\": \\"quick\\"}" | jq -r .scan_id)
+                    
+                    until [ "$(curl -s ${XENORA_URL}/api/scan/results/${SCAN_ID} | jq -r .status)" = "completed" ]; do
+                        sleep 10
+                    done
+
+                    SCORE=$(curl -s ${XENORA_URL}/api/scan/results/${SCAN_ID} | jq -r .risk_score)
+                    echo "Scan ${SCAN_ID} completed with score: ${SCORE}"
+                    
+                    # Download HTML Report for Archival
+                    curl -s "${XENORA_URL}/api/scan/${SCAN_ID}/report?format=html&report_type=executive" -o executive-report.html
+                '''
+            }
+        }
+    }
+    post {
+        always {
+            archiveArtifacts artifacts: '*.html', fingerprint: true
+        }
+    }
+}
+```
+
+### 4. Azure DevOps Pipeline (`azure-pipelines.yml`)
+
+```yaml
+trigger:
+  - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+- script: |
+    set -e
+    RESPONSE=$(curl -s -X POST "$(XENORASEC_ENDPOINT)/api/scan/" \
+      -H "Content-Type: application/json" \
+      -d '{"target": "app.preview.internal", "scan_profile": "quick"}')
+    SCAN_ID=$(echo $RESPONSE | jq -r '.scan_id')
+    echo "##vso[task.setvariable variable=SCAN_ID]$SCAN_ID"
+  displayName: 'Dispatch XenoraSec DAST Scan'
+
+- script: |
+    while true; do
+      STATE=$(curl -s "$(XENORASEC_ENDPOINT)/api/scan/results/$(SCAN_ID)" | jq -r '.status')
+      if [ "$STATE" == "completed" ]; then break; fi
+      sleep 10
+    done
+    curl -s "$(XENORASEC_ENDPOINT)/api/scan/$(SCAN_ID)/report?format=json" -o scan-results.json
+  displayName: 'Poll & Collect Scan Dossier'
+```
+
+---
+
 ## 💻 Frontend Tour & Mobile Responsiveness
 
 The XenoraSec frontend is built with React 19, TypeScript, and Tailwind CSS to deliver an ultra-fast, responsive security operations dashboard:
