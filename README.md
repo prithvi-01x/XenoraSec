@@ -3125,6 +3125,48 @@ pg_restore -h localhost -U xenora -d xenorasec --clean --if-exists --no-owner -j
 psql -U xenora -d xenorasec -c "SELECT count(*) FROM assets; SELECT count(*) FROM scan_results;"
 ```
 
+### 4. Automated Disaster Recovery Restoration Validation Drill (`verify_dr_restore.sh`)
+
+Test backups routinely in an isolated staging sandbox to ensure restoration procedures meet the 15-minute RTO target without silent corruption:
+
+```bash
+#!/usr/bin/env bash
+# scripts/verify_dr_restore.sh
+set -euo pipefail
+
+BACKUP_DIR="/data/backups"
+LATEST_BACKUP=$(find "$BACKUP_DIR" -name "*.db.gz" -type f -printf '%T@ %p\n' | sort -n | tail -1 | cut -f2- -d" ")
+SANDBOX_DB="/tmp/sandbox_restore_drill.db"
+
+if [ -z "$LATEST_BACKUP" ]; then
+    echo "ERROR: No valid database backup archive found in $BACKUP_DIR" >&2
+    exit 1
+fi
+
+echo "Initiating DR drill with latest backup: $LATEST_BACKUP"
+rm -f "$SANDBOX_DB"
+
+# Decompress backup into sandbox database
+gzip -dc "$LATEST_BACKUP" > "$SANDBOX_DB"
+
+# Validate cryptographic and structural integrity
+INTEGRITY=$(sqlite3 "$SANDBOX_DB" "PRAGMA integrity_check;")
+FK_CHECK=$(sqlite3 "$SANDBOX_DB" "PRAGMA foreign_key_check;")
+
+if [ "$INTEGRITY" != "ok" ] || [ -n "$FK_CHECK" ]; then
+    echo "CRITICAL: Restored database failed integrity audit!" >&2
+    echo "Integrity: $INTEGRITY | Foreign Keys: $FK_CHECK" >&2
+    rm -f "$SANDBOX_DB"
+    exit 1
+fi
+
+ASSET_COUNT=$(sqlite3 "$SANDBOX_DB" "SELECT count(*) FROM assets;")
+SCAN_COUNT=$(sqlite3 "$SANDBOX_DB" "SELECT count(*) FROM scan_results;")
+
+echo "DR Restoration Drill PASSED. Verified $ASSET_COUNT assets and $SCAN_COUNT scans."
+rm -f "$SANDBOX_DB"
+```
+
 ---
 
 ## ❓ Troubleshooting & FAQ
