@@ -2696,6 +2696,60 @@ steps:
   displayName: 'Poll & Collect Scan Dossier'
 ```
 
+### 5. Developer Workstation Shift-Left Pre-Commit Hook
+
+Catch hardcoded API endpoints, accidental debug routes, and perimeter exposures on developer laptops before code is pushed to upstream git remotes:
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: local
+    hooks:
+      - id: xenorasec-staging-audit
+        name: XenoraSec DAST Shift-Left Audit
+        entry: bash -c './scripts/pre-commit-xenora.sh'
+        language: system
+        stages: [pre-push]
+        pass_filenames: false
+```
+
+```bash
+#!/usr/bin/env bash
+# scripts/pre-commit-xenora.sh
+set -euo pipefail
+
+SCANNER_URL="${XENORASEC_URL:-http://localhost:8000}"
+TARGET_URL="${DEV_PREVIEW_URL:-http://127.0.0.1:3000}"
+
+echo "Executing pre-push DAST assessment against ${TARGET_URL}..."
+
+# Trigger scan using quick recon profile
+RESP=$(curl -sf -X POST "${SCANNER_URL}/api/scan/" \
+  -H "Content-Type: application/json" \
+  -d "{\"target\": \"${TARGET_URL}\", \"scan_profile\": \"quick\"}") || {
+    echo "WARNING: XenoraSec scanner offline at ${SCANNER_URL}; skipping pre-push gate."
+    exit 0
+}
+
+SCAN_ID=$(echo "$RESP" | jq -r '.scan_id')
+
+while true; do
+  STATUS=$(curl -sf "${SCANNER_URL}/api/scan/results/${SCAN_ID}" | jq -r '.status // "unknown"')
+  if [ "$STATUS" = "completed" ]; then break; fi
+  if [ "$STATUS" = "failed" ]; then echo "DAST scan failed"; exit 1; fi
+  sleep 5
+done
+
+CRIT_COUNT=$(curl -sf "${SCANNER_URL}/api/scan/results/${SCAN_ID}" | jq '[.vulnerabilities[]? | select(.severity == "critical")] | length')
+
+if [ "$CRIT_COUNT" -gt 0 ]; then
+  echo "ERROR: Push blocked by XenoraSec pre-commit hook ($CRIT_COUNT critical vulnerabilities discovered)."
+  exit 1
+fi
+
+echo "Pre-commit DAST audit passed."
+```
+
 ---
 
 ## 💻 Frontend Tour & Mobile Responsiveness
