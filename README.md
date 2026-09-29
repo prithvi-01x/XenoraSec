@@ -339,6 +339,117 @@ XenoraSec categorizes and dispatches Nuclei templates across modular security ve
 
 ---
 
+### 3. Custom Nuclei Template Authoring Guide
+
+XenoraSec natively supports proprietary and organization-specific vulnerability templates alongside the public ProjectDiscovery community repository. Security teams can author bespoke YAML templates to detect private API exposures, internal configuration drift, zero-day CVE indicators, or proprietary technology markers.
+
+#### Template Structure & Core Hierarchy
+
+Nuclei v3 templates follow a structured YAML schema consisting of an identification block, metadata classification, execution protocol, request definitions, matchers, and extractors:
+
+```yaml
+id: xenora-actuator-env-exposure
+
+info:
+  name: Spring Boot Actuator Env Endpoint Key Leakage
+  author: xenora-sec-ops
+  severity: critical
+  description: Detects unprotected Spring Boot Actuator /env or /actuator/env endpoints leaking credentials, tokens, and database passwords.
+  reference:
+    - https://cwe.mitre.org/data/definitions/200.html
+    - https://cwe.mitre.org/data/definitions/522.html
+  remediation: Disable or restrict the /actuator/env endpoint using Spring Security with management.endpoints.web.exposure.exclude=env.
+  classification:
+    cvss-metrics: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N
+    cvss-score: 7.5
+    cwe-id: CWE-200,CWE-522
+  metadata:
+    max-request: 2
+    verified: true
+    vendor: spring
+    product: spring_boot
+  tags: exposure,spring,actuator,keys,misconfig,xenora
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/actuator/env"
+      - "{{BaseURL}}/env"
+
+    headers:
+      Accept: application/json, text/plain, */*
+      User-Agent: XenoraSec-Audit-Engine/2.1
+
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+
+      - type: word
+        words:
+          - "propertySources"
+          - "activeProfiles"
+        condition: or
+        part: body
+
+      - type: regex
+        name: token_extract
+        regex:
+          - '(?i)(password|secret|apikey|token|aws_access_key_id)["'']?\s*:\s*["''][^"'']{4,}'
+        part: body
+
+    extractors:
+      - type: json
+        part: body
+        json:
+          - ".activeProfiles[]"
+```
+
+#### Matcher Types & Logic Operators
+
+XenoraSec's execution wrapper parses Nuclei's full array of matcher primitives:
+
+| Matcher Type | Syntax Parameter | Primary Use Case | Example Invariant |
+| :--- | :--- | :--- | :--- |
+| **`status`** | `status: [200, 301, 403]` | HTTP response code verification | Asserts endpoint returns `200` instead of `404` |
+| **`word`** | `words: ["admin", "root"]` | Substring match in body, header, or all | Substring detection with `condition: and` or `condition: or` |
+| **`regex`** | `regex: ['root:.*:0:0:']` | Regular expression pattern evaluation | Extracting `/etc/passwd` root account hashes |
+| **`dsl`** | `dsl: ["len(body) > 1000"]` | Programmatic boolean evaluation helper | `status_code == 200 && contains(content_type, 'json')` |
+| **`binary`** | `binary: ["504B0304"]` | Raw hex byte sequence matching | ZIP archive magic header detection in file downloads |
+
+#### Extractor Types & Finding Context
+Extractors pull dynamic tokens from HTTP bodies and headers to populate the `matched_at` and finding payload inside XenoraSec:
+- **`json`**: Evaluates JSONPath queries (`.services.database.host`) against JSON responses.
+- **`regex`**: Extracts captured groups via parentheses (`token=([a-zA-Z0-9_\-]+)`).
+- **`kval`**: Key-value pair extraction from response headers (`kval: [server, x-powered-by]`).
+- **`xpath`**: XML document querying for SOAP or XML-RPC endpoints.
+
+#### Managing Local Template Repositories
+
+To inject custom templates into XenoraSec:
+1. **Directory Convention**: Place bespoke templates in a mounted volume or dedicated directory:
+   ```text
+   /opt/xenorasec/custom-templates/
+   ├── api-exposures/
+   │   └── internal-swagger-leak.yaml
+   ├── credentials/
+   │   └── default-vault-login.yaml
+   └── cve-local/
+       └── zero-day-probe.yaml
+   ```
+2. **Template Validation**: Validate YAML syntax using Nuclei's native linter:
+   ```bash
+   nuclei -t /opt/xenorasec/custom-templates/ -validate
+   ```
+3. **Execution via Custom Profile**: In the XenoraSec UI or via `POST /api/scan/`, pass `custom_tags: "xenora,internal"` or supply the custom template directory in `.env`:
+   ```env
+   NUCLEI_CUSTOM_TEMPLATES="/opt/xenorasec/custom-templates"
+   ```
+
+---
+
 ## 🌐 Multi-Target & CIDR Subnet Scanning
 
 XenoraSec provides enterprise-grade mass scanning capabilities supporting both multi-target lists and standard IPv4 Classless Inter-Domain Routing (CIDR) subnet notations.
