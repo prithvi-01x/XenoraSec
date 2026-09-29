@@ -2856,6 +2856,111 @@ While SQLite with WAL mode easily handles thousands of scans and multi-client br
 
 ---
 
+## 💾 Database Maintenance, Backup & Disaster Recovery Runbooks
+
+Ensuring high availability and disaster recovery for historical scan records, attack surface catalogs, and audit logs requires disciplined backup procedures.
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│               XenoraSec Enterprise DR SLA Targets                      │
+├────────────────────────────────────────────────────────────────────────┤
+│ Recovery Time Objective (RTO)  │ < 15 minutes (Full container restore) │
+│ Recovery Point Objective (RPO) │ < 1 hour (Periodic WAL sync & snapshot)│
+│ Backup Encryption Standard     │ AES-256-GCM at rest and in transit   │
+│ Retention Policy               │ 30 days local, 365 days cloud archive│
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### 1. SQLite Online Hot Backups & Integrity Checks
+
+Never copy active SQLite database files (`cp scans.db backup.db`) while the backend is running; this causes malformed database headers due to incomplete WAL frames. Instead, leverage SQLite's atomic online backup API:
+
+#### Atomic Hot Backup Script (`backup_sqlite.sh`)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+BACKUP_DIR="/data/backups"
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+TARGET_FILE="${BACKUP_DIR}/xenorasec_backup_${TIMESTAMP}.db"
+
+mkdir -p "$BACKUP_DIR"
+
+echo "Executing online atomic backup to ${TARGET_FILE}..."
+# VACUUM INTO safely creates an atomic copy without interrupting active scan writes
+sqlite3 /data/scans.db "VACUUM INTO '${TARGET_FILE}';"
+
+# Verify integrity of the generated backup
+INTEGRITY=$(sqlite3 "${TARGET_FILE}" "PRAGMA integrity_check;")
+if [ "$INTEGRITY" != "ok" ]; then
+    echo "CRITICAL: Backup integrity check failed: $INTEGRITY" >&2
+    rm -f "${TARGET_FILE}"
+    exit 1
+fi
+
+# Compress and enforce retention (prune older than 30 days)
+gzip -9 "${TARGET_FILE}"
+find "$BACKUP_DIR" -type f -name "*.db.gz" -mtime +30 -delete
+
+echo "Backup successful: ${TARGET_FILE}.gz"
+```
+
+#### Automated Routine Integrity Audit
+Schedule a weekly cron job to detect filesystem or silent bit-rot corruption:
+```bash
+sqlite3 /data/scans.db "PRAGMA quick_check;"
+sqlite3 /data/scans.db "PRAGMA foreign_key_check;"
+```
+
+### 2. SQLite WAL Checkpointing & Compaction Runbook
+When XenoraSec processes hundreds of CIDR batch scans, the Write-Ahead Log (`scans.db-wal`) can grow. Manage it using checkpoint modes:
+
+| Checkpoint Mode | Pragmas Invocation | Impact on Active Scans |
+| :--- | :--- | :--- |
+| **PASSIVE** | `PRAGMA wal_checkpoint(PASSIVE);` | Checkpoints as many frames as possible without blocking active readers/writers. |
+| **FULL** | `PRAGMA wal_checkpoint(FULL);` | Waits for active readers to finish, then syncs all WAL frames to main database. |
+| **TRUNCATE** | `PRAGMA wal_checkpoint(TRUNCATE);` | Syncs all frames and resets the WAL file length to 0 bytes on disk. |
+
+```bash
+# Emergency WAL truncation command
+sqlite3 /data/scans.db "PRAGMA wal_checkpoint(TRUNCATE);"
+```
+
+### 3. PostgreSQL Automated Enterprise Backup & PITR Runbook
+
+For PostgreSQL deployments, implement multi-tier backup routines combining compressed logical dumps with Point-In-Time Recovery (PITR).
+
+#### Automated Custom Format Dump (`backup_postgres.sh`)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+BACKUP_FILE="/backups/pg_xenorasec_$(date +%F_%H%M).dump"
+
+# Export compressed binary custom-format dump
+pg_dump -h localhost -U xenora -Fc -Z 6 -d xenorasec -f "$BACKUP_FILE"
+
+# Upload to S3 Glacier / Cloud Archive
+aws s3 cp "$BACKUP_FILE" s3://corp-sec-backups/xenorasec/ --sse aws:kms
+
+echo "PostgreSQL backup completed and archived to S3."
+```
+
+#### Disaster Recovery Restoration Drill
+To restore XenoraSec from scratch onto a fresh PostgreSQL instance:
+```bash
+# 1. Terminate active application backend connections
+psql -U postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'xenorasec';"
+
+# 2. Restore database with clean drop and sequence rebuild
+pg_restore -h localhost -U xenora -d xenorasec --clean --if-exists --no-owner -j 4 "/backups/pg_xenorasec_2026-09-28.dump"
+
+# 3. Verify row counts and sequence health
+psql -U xenora -d xenorasec -c "SELECT count(*) FROM assets; SELECT count(*) FROM scan_results;"
+```
+
+---
+
 ## ❓ Troubleshooting & FAQ
 
 ### 1. `Nmap not installed` or `Nuclei not installed`
