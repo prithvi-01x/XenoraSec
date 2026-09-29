@@ -1076,14 +1076,14 @@ Risk Score (0 - 10.0)
 flowchart TD
     FINDING["Vulnerability Discovered via Scan"] --> EVAL{"Evaluate Severity & Score"}
     
-    EVAL -->|Score >= 8.0 or CVSS >= 9.0| CRIT["Tier 1: Critical (48h SLA)"]
-    EVAL -->|Score 6.0 - 7.9| HIGH["Tier 2: High (7d SLA)"]
-    EVAL -->|Score 3.0 - 5.9| MED["Tier 3: Medium (30d SLA)"]
-    EVAL -->|Score < 3.0| LOW["Tier 4: Low (90d SLA)"]
+    EVAL -->|"Score >= 8.0 or CVSS >= 9.0"| CRIT["Tier 1: Critical (48h SLA)"]
+    EVAL -->|"Score 6.0 - 7.9"| HIGH["Tier 2: High (7d SLA)"]
+    EVAL -->|"Score 3.0 - 5.9"| MED["Tier 3: Medium (30d SLA)"]
+    EVAL -->|"Score < 3.0"| LOW["Tier 4: Low (90d SLA)"]
 
     CRIT --> NOTIFY["Auto-Dispatch PagerDuty / Webhook"]
     NOTIFY --> WAR_ROOM["Convene Emergency Remediation War Room"]
-    WAR_ROOM --> PATCH{"Can Patch Be Applied < 24h?"}
+    WAR_ROOM --> PATCH{"Can Patch Be Applied within 24h?"}
     PATCH -->|Yes| APPLY["Deploy Patch & Verify via XenoraSec Re-Scan"]
     PATCH -->|No| COMPENSATE["Deploy Compensating Control (WAF Rule / IP Whitelist)"]
     COMPENSATE --> AUDIT_LOG["File Formal Risk Exception in Asset Inventory"]
@@ -1437,8 +1437,10 @@ flowchart TB
     FASTAPI --> VAL_GATE
     VAL_GATE -.->|Pre-Flight DNS Resolve| TARGET
     VAL_GATE -->|Gated Target String| SANDBOX
-    SANDBOX --> NMAP_RUN & NUC_RUN
-    NMAP_RUN & NUC_RUN -->|Active TCP / HTTP Probes| TARGET
+    SANDBOX --> NMAP_RUN
+    SANDBOX --> NUC_RUN
+    NMAP_RUN -->|Active TCP / HTTP Probes| TARGET
+    NUC_RUN -->|Active TCP / HTTP Probes| TARGET
     FASTAPI --> AUTH_GATE
     FASTAPI --> SQLITE
     SQLITE --> DISK_VOL
@@ -2438,7 +2440,7 @@ flowchart LR
     CI --> DEPLOY["Deploy Ephemeral Preview / Staging"]
     DEPLOY --> API_TRIGGER["Trigger XenoraSec Scan\n(POST /api/scan/)"]
     API_TRIGGER --> POLL["Poll Scan Status\n(GET /api/scan/results/{id})"]
-    POLL --> GATE{"Quality Gate Check\n(Risk Score <= 4.0\n& Crit Vulns == 0)"}
+    POLL --> GATE{"Quality Gate Check\n(Risk Score <= 4.0\nand Crit Vulns == 0)"}
     GATE -->|Pass| APPROVE["Approve PR / Deploy to Production"]
     GATE -->|Fail| BLOCK["Break Pipeline & Post PR Summary"]
 ```
