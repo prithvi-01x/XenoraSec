@@ -992,6 +992,88 @@ Naively trusting `X-Forwarded-For` allows attackers to bypass rate limits by rot
 
 ---
 
+### 4. Threat Modeling & STRIDE / DREAD Attack Surface Taxonomy
+
+Operating an autonomous dual-engine scanner introduces distinct operational security hazards. To safeguard the scanner infrastructure and prevent it from being weaponized as an SSRF proxy, pivot point, or denial-of-service amplifier, XenoraSec is modeled against the Microsoft **STRIDE** classification and evaluated using the **DREAD** risk rating methodology.
+
+#### STRIDE Threat Classification & Defensive Countermeasures
+
+| Threat Vector | STRIDE Category | Attack Scenario & Exploit Path | XenoraSec Defense-in-Depth Implementation | Architectural Boundary |
+| :--- | :--- | :--- | :--- | :--- |
+| **Client IP Spoofing** | **Spoofing** | Adversary falsifies `X-Forwarded-For` or `X-Real-IP` to bypass sliding-window rate limits or poison scan audit logs. | `RateLimiter` enforces `TRUST_PROXY_HEADERS=True` gate, verifies socket peer against `TRUSTED_PROXIES` CIDR list, and evaluates rightmost untrusted hop. | Ingress API Gateway |
+| **Target String Tampering** | **Tampering** | Command injection via crafted target strings (`example.com; rm -rf /` or `127.0.0.1 && cat /etc/passwd`). | Subprocess dispatch uses `asyncio.create_subprocess_exec` with explicit argv tokenization; target undergoes regex FQDN/IPv4 validation and `socket.getaddrinfo()`. | Engine Coordinator |
+| **Audit Log Repudiation** | **Repudiation** | Rogue operator or external attacker triggers scans against unauthorized third-party infrastructure and denies origin. | Structured JSON telemetry logs record UTC timestamps, client socket IPs, user-agent fingerprints, and immutable SQLite WAL commit records. | Persistence & Logging |
+| **SSRF & Metadata Leak** | **Information Disclosure** | Adversary passes cloud metadata (`169.254.169.254`) or loopback (`127.0.0.1`) to steal IAM credentials or Kubernetes tokens. | Zero-trust DNS pre-resolution verifies all candidate IPv4/IPv6 addresses against RFC 1918, RFC 3927 (link-local), RFC 5737 (testnets), and loopback ranges. | Target Sanitization Gate |
+| **Worker Exhaustion DoS** | **Denial of Service** | Submitting mass `/16` CIDR subnets or wildcard honeypots emitting millions of findings to exhaust memory and disk. | Gated prefix validation (`MAX_CIDR_PREFIX=24`, max 256 hosts), 1MB circular ring buffer, `MAX_VULNERABILITIES=1000` hard cap, and `asyncio.Semaphore` slot governors. | Task Queue & Subprocesses |
+| **Container Privilege Escalation** | **Elevation of Privilege** | Exploit in Nmap/Nuclei C/Go binary escapes to host root via vulnerable kernel or cap-raw socket vulnerability. | Container executes strictly as unprivileged `xenora` (UID `10001`), drops `ALL` Linux capabilities (`cap_drop: ALL`), enforces `no-new-privileges:true`, and mounts read-only rootfs. | Container Runtime Sandbox |
+
+#### DREAD Quantitative Risk Scoring Matrix
+
+Every vulnerability discovery and operational risk factor within XenoraSec is prioritized using the **DREAD** (Damage, Reproducibility, Exploitability, Affected Users, Discoverability) weighted scoring model:
+
+$$\text{DREAD Score} = \frac{D + R + E + A + D_{\text{isc}}}{5}$$
+
+```text
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                        XenoraSec DREAD Attack Surface Matrix                           │
+├─────────────────────┬──────────┬──────────┬──────────┬──────────┬──────────┬───────────┤
+│ Threat Scenario     │ Damage   │ Reprod.  │ Exploit. │ Affected │ Discov.  │ Total/10  │
+├─────────────────────┼──────────┼──────────┼──────────┼──────────┼──────────┼───────────┤
+│ Unauthenticated RCE │ 10       │ 10       │ 9        │ 10       │ 8        │ 9.4 (Crit)│
+│ Cloud Metadata SSRF │ 9        │ 9        │ 8        │ 10       │ 7        │ 8.6 (High)│
+│ Subdomain Takeover  │ 8        │ 8        │ 7        │ 8        │ 9        │ 8.0 (High)│
+│ Stored XSS in Admin │ 6        │ 9        │ 6        │ 5        │ 7        │ 6.6 (Med) │
+│ Rate Limit Bypass   │ 4        │ 8        │ 7        │ 4        │ 6        │ 5.8 (Med) │
+│ Banner Leakage      │ 2        │ 10       │ 3        │ 2        │ 9        │ 5.2 (Low) │
+└─────────────────────┴──────────┴──────────┴──────────┴──────────┴──────────┴───────────┘
+```
+
+#### Trust Boundaries & Attack Surface Topology
+
+```mermaid
+flowchart TB
+    subgraph UntrustedInternet ["Untrusted External Zone"]
+        CLIENT["Browser Client / External API"]
+        TARGET["Remote Target Endpoints (WAN / Cloud)"]
+    end
+
+    subgraph PerimeterDMZ ["Perimeter Trust Boundary 1: Ingress Gateway"]
+        NGINX["Nginx Reverse Proxy\n(TLS Termination, Port 80/443)"]
+        RATELIM["Sliding-Window IP Rate Limiter"]
+    end
+
+    subgraph ApplicationBoundary ["Perimeter Trust Boundary 2: Application Core"]
+        FASTAPI["FastAPI Async App (Python 3.12)"]
+        VAL_GATE["Target Sanitizer & DNS Resolution Gate"]
+        AUTH_GATE["Admin Maintenance Token Validator"]
+    end
+
+    subgraph ExecutionBoundary ["Perimeter Trust Boundary 3: Execution Sandbox"]
+        SANDBOX["Isolated Process Sandbox (UID 10001, cap_drop: ALL)"]
+        NMAP_RUN["Nmap Subprocess (-sT unprivileged)"]
+        NUC_RUN["Nuclei Subprocess (-silent -jsonl -no-interactsh)"]
+    end
+
+    subgraph DataBoundary ["Perimeter Trust Boundary 4: Persistence Layer"]
+        SQLITE[("SQLite WAL / PostgreSQL (chmod 770)")]
+        DISK_VOL[("Data Volume (/data/scans.db)")]
+    end
+
+    CLIENT -->|HTTPS / WSS| NGINX
+    NGINX -->|HTTP Forward (Trusted Peer)| RATELIM
+    RATELIM --> FASTAPI
+    FASTAPI --> VAL_GATE
+    VAL_GATE -.->|Pre-Flight DNS Resolve| TARGET
+    VAL_GATE -->|Gated Target String| SANDBOX
+    SANDBOX --> NMAP_RUN & NUC_RUN
+    NMAP_RUN & NUC_RUN -->|Active TCP / HTTP Probes| TARGET
+    FASTAPI --> AUTH_GATE
+    FASTAPI --> SQLITE
+    SQLITE --> DISK_VOL
+```
+
+---
+
 ## 🗄️ Database Architecture & Concurrency
 
 XenoraSec supports both development SQLite and enterprise-scale PostgreSQL via SQLAlchemy 2.0 async sessions:
