@@ -485,7 +485,54 @@ Extractors pull dynamic tokens from HTTP bodies and headers to populate the `mat
 - **`json`**: Evaluates JSONPath queries (`.services.database.host`) against JSON responses.
 - **`regex`**: Extracts captured groups via parentheses (`token=([a-zA-Z0-9_\-]+)`).
 - **`kval`**: Key-value pair extraction from response headers (`kval: [server, x-powered-by]`).
-- **`xpath`**: XML document querying for SOAP or XML-RPC endpoints.
+#### Multi-Step Workflows & Protocol Flow Chaining
+
+Modern complex vulnerabilities require multi-step verification (e.g. obtaining an auth session or CSRF token before probing an internal admin interface). Nuclei v3 enables programmatic multi-request chaining via Javascript execution flows:
+
+```yaml
+id: xenora-auth-bypass-chain
+
+info:
+  name: Chained Admin Endpoint Privilege Verification
+  author: xenora-sec-ops
+  severity: high
+  description: Authenticates with guest credentials and confirms access to restricted /api/v1/admin/users.
+  tags: auth,privilege-escalation,xenora
+
+flow: |
+  http(1) && http(2)
+
+http:
+  - raw:
+      - |
+        POST /api/v1/auth/guest HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/json
+
+        {"guest_mode": true}
+
+    extractors:
+      - type: json
+        internal: true
+        name: session_token
+        json:
+          - ".token"
+
+  - raw:
+      - |
+        GET /api/v1/admin/users HTTP/1.1
+        Host: {{Hostname}}
+        Authorization: Bearer {{session_token}}
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+      - type: word
+        words:
+          - '"role":"superadmin"'
+```
 
 #### Managing Local Template Repositories
 
