@@ -1011,6 +1011,81 @@ When `GROQ_API_KEY` is provided, `AIService` issues an inference request to `lla
 
 ---
 
+### 3. Executive Risk Scoring & Remediation SLA Playbook
+
+Traditional vulnerability management platforms frequently fail security leadership by using linear summation (where 50 minor informational banners generate a terrifying score of 500, while a solitary unauthenticated Remote Code Execution is masked). XenoraSec solves this with its **Michaelis-Menten Saturation Model** combined with an actionable **Remediation SLA Playbook**.
+
+#### Michaelis-Menten Kinetics vs. Legacy Linear Models
+
+```text
+Risk Score (0 - 10.0)
+ 10.0 ┌───────────────────────────────────────────··············· Asymptotic Limit (Vmax=10.0)
+      │                                    . · ´
+  8.0 │                              . · ´       Scenario D: Severely Compromised (8.40)
+      │                        . · ´
+  6.0 │                  . · ´
+      │            . · ´
+  5.0 ┼─────── · ´ ────────────────────────────── Half-Max Saturation Point (Km = 15.0)
+  4.0 │      .´                                  Scenario C: Active RCE Compromise (4.24)
+      │    .´
+  2.0 │  .´                                      Scenario B: Corporate Web Portal (2.35)
+      │ .´
+  0.0 └────────────────────────────────────────── Scenario A: Static Perimeter (0.38)
+      0       15       30       45       60       75       90       Substrate Load (S)
+```
+
+- **Mathematical Invariant**: At $S = K_m = 15.0$, the Risk Score is guaranteed to be exactly $5.0$ (half of $V_{\max}$).
+- **First-Finding Dominance**: The first critical vulnerability produces a steep jump in the curve ($\Delta \text{Score} \approx 3.0 - 4.5$), immediately alerting the SOC. Subsequent findings experience diminishing marginal addition, preventing score runaway.
+
+#### Vulnerability Prioritization & Remediation SLA Matrix
+
+```text
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                        Enterprise Remediation SLA Playbook                             │
+├──────────┬──────────────┬─────────────┬──────────────┬─────────────────────────────────┤
+│ Tier     │ Risk Score   │ CVSS Range  │ Max SLA      │ Required Operational Action     │
+├──────────┼──────────────┼─────────────┼──────────────┼─────────────────────────────────┤
+│ Tier 1   │ 8.0 - 10.0   │ 9.0 - 10.0  │ 24 - 48 Hours│ Emergency Incident Command      │
+│ Critical │              │             │              │ Hotfix deployment or isolation  │
+├──────────┼──────────────┼─────────────┼──────────────┼─────────────────────────────────┤
+│ Tier 2   │ 6.0 - 7.9    │ 7.0 - 8.9   │ 7 Days       │ Sprint interruption             │
+│ High     │              │             │              │ WAF virtual patch / config fix  │
+├──────────┼──────────────┼─────────────┼──────────────┼─────────────────────────────────┤
+│ Tier 3   │ 3.0 - 5.9    │ 4.0 - 6.9   │ 30 Days      │ Standard development backlog    │
+│ Medium   │              │             │              │ Next scheduled maintenance cycle│
+├──────────┼──────────────┼─────────────┼──────────────┼─────────────────────────────────┤
+│ Tier 4   │ 0.0 - 2.9    │ 0.1 - 3.9   │ 90 Days      │ Low priority hardening          │
+│ Low/Info │              │             │              │ Addressed during tech debt pass │
+└──────────┴──────────────┴─────────────┴──────────────┴─────────────────────────────────┘
+```
+
+#### Incident Escalation & Compensating Controls Workflow
+
+```mermaid
+flowchart TD
+    FINDING["Vulnerability Discovered via Scan"] --> EVAL{"Evaluate Severity & Score"}
+    
+    EVAL -->|Score >= 8.0 or CVSS >= 9.0| CRIT["Tier 1: Critical (48h SLA)"]
+    EVAL -->|Score 6.0 - 7.9| HIGH["Tier 2: High (7d SLA)"]
+    EVAL -->|Score 3.0 - 5.9| MED["Tier 3: Medium (30d SLA)"]
+    EVAL -->|Score < 3.0| LOW["Tier 4: Low (90d SLA)"]
+
+    CRIT --> NOTIFY["Auto-Dispatch PagerDuty / Webhook"]
+    NOTIFY --> WAR_ROOM["Convene Emergency Remediation War Room"]
+    WAR_ROOM --> PATCH{"Can Patch Be Applied < 24h?"}
+    PATCH -->|Yes| APPLY["Deploy Patch & Verify via XenoraSec Re-Scan"]
+    PATCH -->|No| COMPENSATE["Deploy Compensating Control (WAF Rule / IP Whitelist)"]
+    COMPENSATE --> AUDIT_LOG["File Formal Risk Exception in Asset Inventory"]
+```
+
+#### Formal Risk Acceptance & Exception Policies
+When a finding cannot be patched within the required SLA due to vendor dependencies:
+1. **Compensating Controls**: Document virtual patch (e.g. Cloudflare WAF managed rule or ModSecurity CRS block).
+2. **Audit Exception Logging**: Record the exception in the Asset Inventory drawer (`PATCH /api/assets/{id}`) with reason, ticket ID, and mandatory re-evaluation date (maximum 90 days).
+3. **Automated Re-Verification**: XenoraSec scans the endpoint to confirm the compensating control actively blocks the exploit payload.
+
+---
+
 ## 💻 Live Terminal & Streaming Engine
 
 Traditional security scanners hide process execution behind generic spinning loaders, leaving engineers blind to intermediate discoveries, hung processes, or long-running service probes. XenoraSec features an interactive **Live Terminal Streaming Engine** providing transparent, real-time command output straight from `stdout`/`stderr` of running Nmap and Nuclei subprocesses.
