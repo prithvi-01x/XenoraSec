@@ -3342,6 +3342,8 @@ flowchart TD
     XENORA --> ISO["ISO/IEC 27001:2022\n(A.5.7, A.8.8, A.8.20)"]
     XENORA --> PCI["PCI-DSS v4.0\n(Req 6.4, Req 11.3)"]
     XENORA --> SOC["SOC 2 Type II\n(CC6.8, CC7.1)"]
+    XENORA --> HIPAA["HIPAA Security Rule\n(§ 164.308, § 164.312)"]
+    XENORA --> CIS["CIS Controls v8\n(Control 7, Control 12)"]
     XENORA --> OWASP["OWASP Top 10\n(A01-A10 Coverage)"]
 ```
 
@@ -3360,6 +3362,10 @@ flowchart TD
 | **PCI-DSS v4.0** | `Req 6.4.1` | Public web applications are evaluated for known vulnerabilities. | Nuclei web application templates auditing for XSS, SQLi, SSRF, auth-bypass, and directory traversal. | Technical Security Report with reproduction curl |
 | **SOC 2 Type II** | `CC6.8` | The entity prevents or detects unauthorized software execution and configurations. | Default credential tests, exposed administrative panels (Grafana, Kibana, Jenkins), and debug routes. | Finding Card with matched URLs and HTTP codes |
 | **SOC 2 Type II** | `CC7.1` | The entity uses detection and monitoring procedures to identify changes to attack surface. | ASM delta upsert engine records `first_seen` vs `last_seen` timestamps for newly exposed ports. | Asset Inventory slide-out audit drawer |
+| **HIPAA Security** | `§ 164.308` | Risk Analysis: Conduct an accurate and thorough assessment of potential risks and vulnerabilities. | Automated dual-engine scanning maps perimeter vulnerabilities to protected health information (ePHI) endpoints. | Signed Executive Summary PDF & Risk Posture Gauge |
+| **HIPAA Security** | `§ 164.312` | Transmission Security: Guard against unauthorized access to electronic protected health information. | Passive TLS inspector validates modern cipher suites, detects weak TLS versions, and monitors certificate expiration. | SSL/TLS Telemetry Card & Cipher Audit |
+| **CIS Controls v8** | `Control 7.1` | Establish and Maintain a Vulnerability Management Process with automated scanners. | Scheduled batch scanning over network subnets and continuous automated CVE signature evaluation. | Automated CI/CD Reports & Batch Dashboard |
+| **CIS Controls v8** | `Control 12.1`| Ensure network infrastructure is monitored for unauthorized ports and services. | Continuous TCP Connect (`-sT`) scanning with banner extraction identifies shadow IT and rogue services. | Discovered Ports Table & Asset Inventory Drawer |
 
 ### 2. OWASP Top 10 Coverage Mapping
 
