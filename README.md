@@ -1830,6 +1830,78 @@ flowchart TD
 
 ---
 
+## 🛡️ Production Hardening & Defense-in-Depth Checklist
+
+Deploying an autonomous penetration testing and vulnerability scanning appliance requires defense-in-depth controls across every infrastructure tier. The following production hardening checklist outlines mandatory security controls for enterprise deployments:
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│                   Defense-in-Depth Multi-Layer Model                   │
+├────────────────────────────────────────────────────────────────────────┤
+│ Layer 1: Edge & Ingress       │ TLS 1.3, Cloudflare/WAF, DDoS Shield  │
+│ Layer 2: Network & Firewall   │ Ingress Port 443 only, Egress DNS lock │
+│ Layer 3: Reverse Proxy        │ Nginx rate-limiting, strict CSP/HSTS   │
+│ Layer 4: Application Runtime  │ Zero-trust SSRF, Pydantic validation   │
+│ Layer 5: Execution Sandbox    │ UID 10001, cap_drop ALL, read-only fs  │
+│ Layer 6: Data & Storage       │ chmod 770, AES-256 at rest, WAL sync   │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### 1. Transport Layer Security (TLS 1.3 & Cipher Suites)
+- [ ] **Enforce TLS 1.3 with TLS 1.2 Fallback**: Disable SSLv3, TLS 1.0, and TLS 1.1 completely in Nginx or upstream ingress.
+  ```nginx
+  ssl_protocols TLSv1.2 TLSv1.3;
+  ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';
+  ssl_prefer_server_ciphers on;
+  ssl_session_cache shared:SSL:10m;
+  ssl_session_timeout 1d;
+  ssl_session_tickets off;
+  ```
+- [ ] **HTTP Strict Transport Security (HSTS)**: Send `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload` to guarantee browsers never downgrade to unencrypted HTTP.
+- [ ] **OCSP Stapling**: Enable `ssl_stapling on;` and `ssl_stapling_verify on;` to accelerate certificate revocation checks without leaking client browsing patterns to certificate authorities.
+
+### 2. Strict HTTP Defensive Headers & Content Security Policy (CSP Level 3)
+- [ ] **Content Security Policy (CSP)**: Restrict script and frame origins to prevent Cross-Site Scripting (XSS):
+  ```nginx
+  add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self' wss: ws: https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';" always;
+  ```
+- [ ] **Clickjacking Prevention**: Enforce `X-Frame-Options: DENY` on all backend responses.
+- [ ] **MIME Sniffing Mitigation**: Enforce `X-Content-Type-Options: nosniff`.
+- [ ] **Referrer Policy**: Enforce `Referrer-Policy: strict-origin-when-cross-origin` to prevent leaking target domain queries in HTTP referrers.
+- [ ] **Permissions Policy**: Block intrusive browser capabilities: `Permissions-Policy: geolocation=(), camera=(), microphone=(), payment=()`.
+
+### 3. Cross-Origin Resource Sharing (CORS) Governance
+- [ ] **Reject Wildcard Origins in Production**: Ensure `ALLOWED_ORIGINS` in `.env` is never set to `*`. Explicitly whitelist exact operational domains (e.g., `ALLOWED_ORIGINS="https://scanner.internal.company.com"`).
+- [ ] **Pre-Flight Cache Optimization**: Configure `Access-Control-Max-Age: 86400` to minimize unnecessary pre-flight OPTIONS overhead.
+
+### 4. Host Firewall & Network Ingress/Egress Lockdown
+- [ ] **Ingress Policy**: Restrict host inbound access strictly to ports 80/443 (HTTP/HTTPS) and port 22 (SSH via Bastion / VPN only).
+  ```bash
+  # UFW Lockdown Recipe
+  sudo ufw default deny incoming
+  sudo ufw default allow outgoing
+  sudo ufw allow in on eth0 to any port 443 proto tcp
+  sudo ufw allow in on eth0 to any port 80 proto tcp
+  sudo ufw allow in on eth1 to any port 22 proto tcp comment 'SSH management interface'
+  sudo ufw enable
+  ```
+- [ ] **Egress Guardrails**: While active scanning requires outbound TCP connectivity, block egress traffic destined for cloud metadata (`169.254.169.254/32`) at the host iptables level as a defense-in-depth safeguard against misconfiguration:
+  ```bash
+  sudo iptables -A OUTPUT -d 169.254.169.254/32 -j DROP
+  ```
+
+### 5. Linux Kernel & Container Seccomp Hardening
+- [ ] **Non-Root System Execution**: Verify that the application process runs as UID `10001` (`xenora`) both inside and outside containers.
+- [ ] **Drop All Linux Capabilities**: Configure `cap_drop: [ALL]` in Docker Compose or Kubernetes pod specs. XenoraSec does not use raw sockets for default `-sT` scans.
+- [ ] **Prevent Privilege Escalation**: Verify `no-new-privileges:true` is active in container runtime definitions.
+- [ ] **Read-Only Root Filesystem**: Run container with `--read-only`, mounting writeable `tmpfs` only at `/tmp` and `/run`.
+
+### 6. Secrets & Operational Credential Hygiene
+- [ ] **Zero Hardcoded Secrets**: Ensure `GROQ_API_KEY` and `CLEANUP_SECRET` are passed through secure environment vaults (e.g. AWS Secrets Manager, HashiCorp Vault, Doppler, or GitHub Actions Secrets).
+- [ ] **Log Scrubbing**: Verify that API keys and authentication tokens are never outputted in console logs or stored in scan result JSON columns.
+
+---
+
 ## 🔄 CI/CD Automation Pipeline
 
 XenoraSec incorporates an automated continuous integration and testing pipeline orchestrated via **GitHub Actions** (`.github/workflows/ci.yml`). Every commit and pull request targeting the `main` branch undergoes automated matrix validation:
