@@ -12,6 +12,7 @@
   <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-Ready-2496ED.svg?logo=docker&logoColor=white" alt="Docker"></a>
   <a href="https://groq.com/"><img src="https://img.shields.io/badge/AI-Groq%20%2B%20Llama%203.3-F05A28.svg" alt="Groq AI"></a>
   <a href="https://github.com/prithvi-01x/XenoraSec/actions/workflows/ci.yml"><img src="https://github.com/prithvi-01x/XenoraSec/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a>
+  <a href="https://github.com/prithvi-01x/XenoraSec/discussions"><img src="https://img.shields.io/badge/Community-Discussions-blueviolet.svg?logo=github" alt="GitHub Discussions"></a>
   <a href="https://nmap.org/"><img src="https://img.shields.io/badge/Engine-Nmap%207.94+-blue.svg" alt="Nmap"></a>
   <a href="https://github.com/projectdiscovery/nuclei"><img src="https://img.shields.io/badge/Engine-Nuclei%20v3.3.8-purple.svg" alt="Nuclei"></a>
   <a href="https://github.com/prithvi-01x/XenoraSec"><img src="https://img.shields.io/badge/Security-SSRF%20Guarded-success.svg" alt="Security Guarded"></a>
@@ -3540,6 +3541,11 @@ We warmly welcome community contributions from security researchers, systems dev
 - **Python**: Formatted with `black` (line length 88), linted with `ruff`, strict type hinting with `mypy`.
 - **Frontend**: Clean React 19 functional components, strict TypeScript, Tailwind CSS utility styling without ad-hoc inline styles.
 - **API Changes**: Any modifications to `/api` routes must include corresponding Pydantic schema validation and Swagger docstrings.
+
+### 3. Community & Feedback
+We value questions, design discussions, and feature proposals:
+- **[GitHub Discussions](https://github.com/prithvi-01x/XenoraSec/discussions)**: Participate in RFC architecture proposals, share custom Nuclei templates, or ask troubleshooting questions.
+- **[Issue Reporting](https://github.com/prithvi-01x/XenoraSec/issues)**: Submit reproducible bug reports or suggest feature enhancements using our standardized templates.
 
 ---
 
