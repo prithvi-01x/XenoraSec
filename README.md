@@ -3576,11 +3576,13 @@ An alphabetical reference defining core architectural, networking, and vulnerabi
 
 This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
 
-### Acknowledgements
-- [Nmap Security Scanner](https://nmap.org/) by Gordon Lyon (Fyodor)
-- [Nuclei Vulnerability Scanner](https://github.com/projectdiscovery/nuclei) by the ProjectDiscovery team
-- [FastAPI](https://fastapi.tiangolo.com/) by Sebastián Ramírez
-- [Groq](https://groq.com/) for low-latency LPU AI inference
+### Acknowledgements & Open Source Credits
+XenoraSec stands on the shoulders of giants in the open-source security and developer ecosystem. We gratefully acknowledge:
+- **[ProjectDiscovery Nuclei](https://github.com/projectdiscovery/nuclei)**: High-speed, template-driven vulnerability scanning engine powering targeted security discovery.
+- **[Nmap Project](https://nmap.org/)**: The gold-standard network mapper by Gordon Lyon (Fyodor), providing reliable service detection and port auditing.
+- **[FastAPI](https://fastapi.tiangolo.com/)**: High-performance, asynchronous Python web framework created by Sebastián Ramírez.
+- **[SQLAlchemy](https://www.sqlalchemy.org/) & [aiosqlite](https://github.com/omnilib/aiosqlite)**: Production-grade asynchronous SQL toolkit and SQLite database driver.
+- **[Groq](https://groq.com/)**: Ultra-fast LPU inference enabling real-time contextual threat analysis.
 
 <p align="center">
   <b>Built with 🛡️ for ethical hackers, defense engineers, and DevSecOps professionals.</b>
