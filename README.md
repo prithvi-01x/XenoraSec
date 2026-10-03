@@ -2347,6 +2347,11 @@ The application will be accessible at **`http://localhost`** (or your server's I
   docker compose up
   ```
 
+> 💡 **Tip — Non-Root Volume Permissions**: The production container executes as the non-root user `xenora` (`UID:GID 10001:10001`). When binding a host directory for `/data` persistence instead of a named Docker volume, ensure the host directory has appropriate write permissions:
+> ```bash
+> mkdir -p ./data && sudo chown -R 10001:10001 ./data && sudo chmod -R 770 ./data
+> ```
+
 ---
 
 ## 🛡️ Container Hardening & Non-Root Security
