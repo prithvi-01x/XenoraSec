@@ -2220,9 +2220,14 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
+# Or ultra-fast setup with uv (Python 3.12+ recommended)
+# uv venv && source .venv/bin/activate && uv pip install -r requirements.txt
+
 # Start the FastAPI server on port 8000
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
+
+> 💡 **Performance Tip**: XenoraSec is fully optimized for **Python 3.12+**. Using Astral's [`uv`](https://github.com/astral-sh/uv) package manager provides 10-100x faster dependency installation and deterministic virtual environment bootstrapping.
 
 #### 4. Frontend Setup
 In a new terminal:
