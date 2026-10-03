@@ -560,6 +560,8 @@ To inject custom templates into XenoraSec:
    NUCLEI_CUSTOM_TEMPLATES="/opt/xenorasec/custom-templates"
    ```
 
+> 💡 **Custom Template Directory Override**: You can also point XenoraSec directly to an alternative template root directory using the `NUCLEI_TEMPLATES_PATH` environment variable (e.g. `NUCLEI_TEMPLATES_PATH="/opt/xenorasec/custom-templates"`). This overrides default template path lookups and allows isolated air-gapped or private template distributions to be loaded seamlessly without modifying core scanner binaries.
+
 ---
 
 ## 🌐 Multi-Target & CIDR Subnet Scanning
